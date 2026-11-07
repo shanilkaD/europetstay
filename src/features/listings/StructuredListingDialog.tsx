@@ -123,7 +123,7 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
         }
         if (verificationResult.error) setErrorMessage(verificationResult.error.message)
         else if (verificationResult.data) {
-          setExistingDocumentPath(verificationResult.data.id_document_path)
+          setExistingDocumentPath(verificationResult.data.id_document_path ?? '')
           setReferenceName(verificationResult.data.reference_name)
           setReferenceContact(verificationResult.data.reference_contact)
           setAgreeToRules(verificationResult.data.agreed_to_rules)
@@ -188,7 +188,6 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
       if (description.trim().length < 50) return setStepError(t('aboutMinimum'))
       if (!experienceYears || !sitterType || !smoker || !bringOwnPet) return setStepError(t('completeSitterPreferences'))
       if (!photos.length && !listing?.photo_urls?.length && !listing?.photo_url) return setStepError(t('sitterPhotoRequired'))
-      if (!idDocument && !existingDocumentPath) return setStepError(t('idDocumentRequired'))
       if (idDocument && !['image/jpeg', 'image/png', 'application/pdf'].includes(idDocument.type)) return setStepError(t('idDocumentTypeError'))
       if (idDocument && idDocument.size > 10 * 1024 * 1024) return setStepError(t('idDocumentSizeError'))
       if (!referenceName.trim() || !referenceContact.trim() || !agreeToRules) return setStepError(t('completeTrustChecklist'))
@@ -277,7 +276,7 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
       }
 
       if (type === 'offer_sitting') {
-        let documentPath = existingDocumentPath
+        let documentPath: string | null = existingDocumentPath || null
         if (idDocument) {
           const extension = idDocument.type === 'application/pdf' ? 'pdf' : idDocument.type === 'image/png' ? 'png' : 'jpg'
           documentPath = `${userId}/${crypto.randomUUID()}.${extension}`
@@ -427,7 +426,7 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
                       <p className="photo-field-hint">{t('sitterPhotoHint')}</p>
                       <PhotoUploadField files={photos} onChange={setPhotos} maxFiles={1} addLabel="chooseYourPhoto" />
                       {(listing?.photo_urls?.length || listing?.photo_url) && <p className="form-hint">{t('currentListingPhotoSaved')}</p>}
-                      <label className="form-label">{t('idDocument')}<input className="form-input" type="file" accept="image/jpeg,image/png,application/pdf" onChange={(event) => setIdDocument(event.currentTarget.files?.[0] ?? null)} /><small>{t('idDocumentPrivate')}</small></label>
+                      <label className="form-label">{t('idDocument')} <span className="optional-field">{t('optional')}</span><input className="form-input" type="file" accept="image/jpeg,image/png,application/pdf" onChange={(event) => setIdDocument(event.currentTarget.files?.[0] ?? null)} /><small>{t('idDocumentPrivate')}</small></label>
                       {existingDocumentPath && !idDocument && <p className="form-hint">{t('idDocumentAlreadyUploaded')}</p>}
                       <div className="form-row">
                         <label className="form-label">{t('referenceName')}<input className="form-input" required value={referenceName} onChange={(event) => setReferenceName(event.target.value)} /></label>

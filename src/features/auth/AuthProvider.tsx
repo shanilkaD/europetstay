@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../../lib/supabase'
 import { AuthContext } from './auth-context'
+import { syncAuthProfile } from './syncAuthProfile'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
@@ -18,9 +19,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession)
       setLoading(false)
+      if (nextSession?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED')) {
+        const signedInUser = nextSession.user
+        window.setTimeout(() => {
+          void syncAuthProfile(signedInUser).catch((error: unknown) => {
+            console.error('Unable to synchronize the signed-in user profile:', error instanceof Error ? error.message : error)
+          })
+        }, 0)
+      }
     })
 
     return () => {

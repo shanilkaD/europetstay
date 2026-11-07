@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AuthDialog } from '../features/auth/AuthDialog'
 import { useAuth } from '../features/auth/useAuth'
@@ -27,7 +27,6 @@ export default function App() {
   const { t, i18n } = useTranslation()
   const { user, loading: authLoading, signOut } = useAuth()
   const [listings, setListings] = useState<Listing[]>([])
-  const [viewingListingId, setViewingListingId] = useState('')
   const [profiles, setProfiles] = useState<Record<string, Profile>>({})
   const [activePostTab, setActivePostTab] = useState<'stays' | 'sitters'>('stays')
   const [petFilter, setPetFilter] = useState('all')
@@ -41,7 +40,9 @@ export default function App() {
   const [loadingListings, setLoadingListings] = useState(Boolean(supabase))
   const [listingError, setListingError] = useState('')
   const [actionError, setActionError] = useState('')
-  const [dialog, setDialog] = useState<Dialog>(null)
+  const [dialog, setDialog] = useState<Dialog>(() =>
+    new URLSearchParams(window.location.search).has('password-recovery') ? 'auth' : null,
+  )
   const [pendingRole, setPendingRole] = useState<ListingRole | null>(null)
   const [profileData, setProfileData] = useState<{ userId: string; userRole: Profile['user_role']; error: string } | null>(null)
   const [chatTarget, setChatTarget] = useState<ChatTarget>(null)
@@ -152,9 +153,7 @@ export default function App() {
     return () => { document.body.style.overflow = previousOverflow }
   }, [activeDialog, chatTarget, needsRoleChoice])
 
-  const filteredListings = useMemo(() => listings.filter((listing) =>
-    listing.id === viewingListingId || listing.owner_id !== user?.id,
-  ), [listings, user?.id, viewingListingId])
+  const filteredListings = listings
   const featuredListing = listings.find((listing) => listing.photo_urls?.[0] || listing.photo_url)
   const featuredPhoto = featuredListing?.photo_urls?.[0] ?? featuredListing?.photo_url
 
@@ -440,7 +439,6 @@ export default function App() {
           setListings((current) => [listing, ...current.filter((item) => item.id !== listing.id)])
         }}
         onViewListing={(listing) => {
-          setViewingListingId(listing.id)
           setActivePostTab(listing.listing_type === 'need_sitter' ? 'stays' : 'sitters')
           setDialog(null)
           setEditingListing(null)
@@ -455,7 +453,6 @@ export default function App() {
         onMessages={() => setDialog('inbox')}
         onView={(listing) => {
           setListings((current) => [listing, ...current.filter((item) => item.id !== listing.id)])
-          setViewingListingId(listing.id)
           setActivePostTab(listing.listing_type === 'need_sitter' ? 'stays' : 'sitters')
           setDialog(null)
           window.setTimeout(() => {
@@ -465,7 +462,6 @@ export default function App() {
         }}
         onDeleted={(listingId) => {
           setListings((current) => current.filter((listing) => listing.id !== listingId))
-          setViewingListingId((current) => current === listingId ? '' : current)
         }}
       />}
       {activeDialog === 'inbox' && user && <InboxDialog

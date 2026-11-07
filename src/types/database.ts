@@ -80,7 +80,7 @@ export type ListingPrivateDetails = {
 
 export type SitterVerificationSubmission = {
   sitter_id: string
-  id_document_path: string
+  id_document_path: string | null
   reference_name: string
   reference_contact: string
   agreed_to_rules: boolean
