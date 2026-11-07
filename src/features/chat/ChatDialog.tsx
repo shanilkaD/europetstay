@@ -28,7 +28,6 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
   const [privateCareDetails, setPrivateCareDetails] = useState<ListingPrivateDetails | null>(null)
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
   const endRef = useRef<HTMLDivElement>(null)
-  const channelRef = useRef<RealtimeChannel | null>(null)
 
   const markAsRead = useCallback(async (id: string) => {
     if (!supabase) return
@@ -45,6 +44,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
     if (!client) return
 
     const cancelled = { current: false }
+    const channel = { current: null as RealtimeChannel | null }
 
     async function startChat() {
       if (!client) return
@@ -61,6 +61,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
             .eq('sitter_id', sitterId)
             .maybeSingle()
           if (existingError) throw existingError
+          if (cancelled.current) return
           id = existing?.id
         }
         if (!id) {
@@ -69,6 +70,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
             .insert({ listing_id: listing.id, owner_id: ownerId, sitter_id: sitterId })
             .select('id')
             .single()
+          if (cancelled.current) return
           if (createError?.code === '23505') {
             const { data: concurrent, error: retryError } = await client
               .from('conversations')
@@ -94,6 +96,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
           .eq('id', conversationIdValue)
           .single()
         if (participantsError) throw participantsError
+        if (cancelled.current) return
         setReviewTargetId(user.id === participants.owner_id ? participants.sitter_id : participants.owner_id)
         if (listing.listing_type === 'need_sitter') {
           const { data: careDetails, error: careError } = await client
@@ -102,9 +105,10 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
             .eq('listing_id', listing.id)
             .maybeSingle()
           if (careError) throw careError
+          if (cancelled.current) return
           setPrivateCareDetails(careDetails)
         }
-        channelRef.current = client.channel(`conversation:${conversationIdValue}`)
+        channel.current = client.channel(`conversation:${conversationIdValue}:${crypto.randomUUID()}`)
           .on('postgres_changes', {
             event: 'INSERT',
             schema: 'public',
@@ -138,7 +142,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
           await markAsRead(conversationIdValue)
         }
       } catch (error) {
-        if (!cancelled.current) setErrorMessage(error instanceof Error ? error.message : t('chatLoadFailed'))
+        if (!cancelled.current) setErrorMessage(getErrorMessage(error, t('chatLoadFailed')))
       } finally {
         if (!cancelled.current) setLoading(false)
       }
@@ -147,10 +151,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
     void startChat()
     return () => {
       cancelled.current = true
-      if (channelRef.current) {
-        void client.removeChannel(channelRef.current)
-        channelRef.current = null
-      }
+      if (channel.current) void client.removeChannel(channel.current)
     }
   }, [existingConversationId, listing.id, listing.listing_type, listing.owner_id, markAsRead, t, user.id])
 
@@ -185,7 +186,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
       setMessages((current) => current.some((message) => message.id === data.id) ? current : [...current, data])
       setDraft('')
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t('sendMessageFailed'))
+      setErrorMessage(getErrorMessage(error, t('sendMessageFailed')))
     } finally {
       setSending(false)
     }
@@ -266,4 +267,12 @@ function mergeMessages(first: Message[], second: Message[]) {
   const merged = new Map<string, Message>()
   for (const message of [...first, ...second]) merged.set(message.id, message)
   return [...merged.values()].sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return fallback
 }
