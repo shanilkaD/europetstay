@@ -361,7 +361,7 @@ export default function App() {
               <span>euro<span>pet</span>stay</span>
             </a>
             <p>{t('footerText')}</p>
-            <a href="mailto:hello@europetstay.com">hello@europetstay.com</a>
+            <a href="mailto:senadhee1999@gmail.com">{t('emailUs')}</a>
           </div>
           <div className="footer-column">
             <h2>{t('footerExplore')}</h2>
@@ -374,7 +374,7 @@ export default function App() {
             <h2>{t('help')}</h2>
             <a href="#how-it-works">{t('faq')}</a>
             <a href="/trust-safety.html">{t('trustSafety')}</a>
-            <a href="mailto:hello@europetstay.com">{t('contact')}</a>
+            <a href="mailto:senadhee1999@gmail.com">{t('emailUs')}</a>
           </div>
           <div className="footer-column">
             <h2>{t('legal')}</h2>
