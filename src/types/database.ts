@@ -2,6 +2,11 @@ export type Profile = {
   id: string
   display_name: string
   avatar_url: string | null
+  user_role?: 'owner' | 'sitter' | null
+  id_verified?: boolean
+  references_count?: number
+  avg_rating?: number
+  total_reviews?: number
   created_at: string
   updated_at: string
 }
@@ -9,13 +14,24 @@ export type Profile = {
 export type Listing = {
   id: string
   owner_id: string
+  listing_type: 'need_sitter' | 'offer_sitting'
   title: string
   city: string
   country: string
-  pet_type: 'cat' | 'dog' | 'bird' | 'other'
-  pet_name: string
+  pet_type: 'cat' | 'dog' | 'bird' | 'other' | 'both'
+  pet_types?: string[]
+  pet_name: string | null
+  pet_age: string
+  pet_breed: string
   pet_details: string
   pet_care_needs: string[]
+  can_care_for: string[]
+  experience_years: string
+  special_skills: string[]
+  smoker: 'smoker' | 'non_smoker' | null
+  sitter_type: 'single' | 'couple' | 'family' | null
+  bring_own_pet: 'no' | 'dog' | 'cat' | null
+  languages: string[]
   house_type: 'apartment' | 'house' | 'farm' | 'studio' | null
   offers: string[]
   house_rules: string[]
@@ -24,19 +40,19 @@ export type Listing = {
   description: string
   photo_url: string | null
   photo_urls: string[]
-  status: 'active' | 'closed'
+  status: 'live' | 'booked' | 'completed' | 'cancelled'
   created_at: string
 }
 
 export type SitterApplication = {
   id: string
   sitter_id: string
-  destinations: string[]
-  starts_on: string
-  ends_on: string
+  animals: string[]
   party_type: 'single' | 'couple' | 'family'
   languages: string[]
   experience: string[]
+  experience_years: string
+  pet_experience: string
   about: string
   photo_url: string
   created_at: string
@@ -50,11 +66,48 @@ export type Conversation = {
   created_at: string
 }
 
+export type ListingPrivateDetails = {
+  listing_id: string
+  owner_id: string
+  medical_needs: string
+  vet_name: string
+  vet_phone: string
+  emergency_contact_name: string
+  emergency_contact_phone: string
+  who_pays_vet: 'owner' | 'shared'
+  updated_at: string
+}
+
+export type SitterVerificationSubmission = {
+  sitter_id: string
+  id_document_path: string
+  reference_name: string
+  reference_contact: string
+  agreed_to_rules: boolean
+  updated_at: string
+}
+
+export type ConversationRead = {
+  conversation_id: string
+  user_id: string
+  last_read_at: string
+}
+
 export type Message = {
   id: string
   conversation_id: string
   sender_id: string
   body: string
+  created_at: string
+}
+
+export type Review = {
+  id: string
+  listing_id: string
+  reviewer_id: string
+  reviewed_id: string
+  rating: number
+  comment: string
   created_at: string
 }
 
@@ -70,8 +123,8 @@ export type Database = {
     Tables: {
       profiles: Table<
         Profile,
-        Pick<Profile, 'id'> & Partial<Pick<Profile, 'display_name' | 'avatar_url'>>,
-        Partial<Pick<Profile, 'display_name' | 'avatar_url'>>
+        Pick<Profile, 'id'> & Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'user_role' | 'id_verified' | 'references_count' | 'avg_rating' | 'total_reviews'>>,
+        Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'user_role' | 'id_verified' | 'references_count' | 'avg_rating' | 'total_reviews'>>
       >
       listings: Table<
         Listing,
@@ -81,7 +134,7 @@ export type Database = {
       sitter_applications: Table<
         SitterApplication,
         Omit<SitterApplication, 'id' | 'created_at'>,
-        never
+        Partial<Omit<SitterApplication, 'id' | 'sitter_id' | 'created_at'>>
       >
       conversations: Table<
         Conversation,
@@ -91,6 +144,26 @@ export type Database = {
       messages: Table<
         Message,
         Omit<Message, 'id' | 'created_at'>,
+        never
+      >
+      listing_private_details: Table<
+        ListingPrivateDetails,
+        Omit<ListingPrivateDetails, 'updated_at'>,
+        Partial<Omit<ListingPrivateDetails, 'listing_id' | 'owner_id' | 'updated_at'>>
+      >
+      sitter_verification_submissions: Table<
+        SitterVerificationSubmission,
+        Omit<SitterVerificationSubmission, 'updated_at'>,
+        Partial<Omit<SitterVerificationSubmission, 'sitter_id' | 'updated_at'>>
+      >
+      conversation_reads: Table<
+        ConversationRead,
+        ConversationRead,
+        Pick<ConversationRead, 'last_read_at'>
+      >
+      reviews: Table<
+        Review,
+        Omit<Review, 'id' | 'created_at'>,
         never
       >
     }

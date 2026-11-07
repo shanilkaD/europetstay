@@ -4,17 +4,19 @@ import { supabase } from '../../lib/supabase'
 
 type AuthDialogProps = {
   onClose: () => void
+  onAuthenticated: () => void
 }
 
-export function AuthDialog({ onClose }: AuthDialogProps) {
+export function AuthDialog({ onClose, onAuthenticated }: AuthDialogProps) {
   const { t } = useTranslation()
   const [email, setEmail] = useState('')
-  const [step, setStep] = useState<'email' | 'sent'>('email')
+  const [token, setToken] = useState('')
+  const [step, setStep] = useState<'email' | 'code'>('email')
   const [busy, setBusy] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
 
-  async function sendSignInLink(event: FormEvent<HTMLFormElement>) {
+  async function sendSignInCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabase) {
       setErrorMessage(t('supabaseMissing'))
@@ -26,11 +28,11 @@ export function AuthDialog({ onClose }: AuthDialogProps) {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { shouldCreateUser: true, emailRedirectTo: window.location.origin },
+        options: { shouldCreateUser: true },
       })
       if (error) throw error
-      setStep('sent')
-      setSuccessMessage(t('linkSent'))
+      setStep('code')
+      setSuccessMessage(t('codeSent'))
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t('authFailed'))
     } finally {
@@ -38,7 +40,31 @@ export function AuthDialog({ onClose }: AuthDialogProps) {
     }
   }
 
-  async function resendLink() {
+  async function verifyCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase) {
+      setErrorMessage(t('supabaseMissing'))
+      return
+    }
+    setBusy(true)
+    setErrorMessage('')
+    setSuccessMessage('')
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: token.trim(),
+        type: 'email',
+      })
+      if (error) throw error
+      onAuthenticated()
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : t('authFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resendCode() {
     if (!supabase) {
       setErrorMessage(t('supabaseMissing'))
       return
@@ -49,10 +75,10 @@ export function AuthDialog({ onClose }: AuthDialogProps) {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { shouldCreateUser: true, emailRedirectTo: window.location.origin },
+        options: { shouldCreateUser: true },
       })
       if (error) throw error
-      setSuccessMessage(t('linkResent'))
+      setSuccessMessage(t('codeResent'))
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : t('authFailed'))
     } finally {
@@ -94,21 +120,37 @@ export function AuthDialog({ onClose }: AuthDialogProps) {
         <div className="auth-separator"><span>{t('orContinueWithEmail')}</span></div>
 
         {step === 'email' ? (
-          <form onSubmit={(event) => void sendSignInLink(event)}>
+          <form autoComplete="new-password" onSubmit={(event) => void sendSignInCode(event)}>
             <label className="form-label" htmlFor="auth-email">{t('emailAddress')}</label>
-            <input id="auth-email" className="form-input" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
+            <input id="auth-email" className="form-input" type="email" autoComplete="off" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />
             <button className="button button-primary full-button" type="submit" disabled={busy || !supabase}>
-              {busy ? t('sending') : t('sendSignInLink')}
+              {busy ? t('sending') : t('sendSignInCode')}
             </button>
           </form>
         ) : (
-          <div>
-            <p className="code-sent-to">{t('signInLinkSentTo', { email })}</p>
-            <button className="button button-primary full-button" type="button" disabled={busy || !supabase} onClick={() => void resendLink()}>
-              {busy ? t('sending') : t('resendLink')}
+          <form autoComplete="new-password" onSubmit={(event) => void verifyCode(event)}>
+            <p className="code-sent-to">{t('codeSentTo', { email })}</p>
+            <label className="form-label" htmlFor="auth-code">{t('emailCode')}</label>
+            <input
+              id="auth-code"
+              className="form-input otp-input"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              required
+              value={token}
+              onChange={(event) => setToken(event.target.value.replace(/\D/g, ''))}
+            />
+            <button className="button button-primary full-button" type="submit" disabled={busy || !supabase || token.length !== 6}>
+              {busy ? t('verifyingCode') : t('verifyCode')}
             </button>
-            <button className="text-button" type="button" disabled={busy} onClick={() => { setStep('email'); setErrorMessage(''); setSuccessMessage('') }}>{t('useDifferentEmail')}</button>
-          </div>
+            <button className="text-button" type="button" disabled={busy || !supabase} onClick={() => void resendCode()}>
+              {busy ? t('sending') : t('resendCode')}
+            </button>
+            <button className="text-button" type="button" disabled={busy} onClick={() => { setStep('email'); setToken(''); setErrorMessage(''); setSuccessMessage('') }}>{t('useDifferentEmail')}</button>
+          </form>
         )}
 
         {successMessage && <p className="form-success" role="status">{successMessage}</p>}

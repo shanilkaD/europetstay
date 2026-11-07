@@ -13,47 +13,71 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
   const { t } = useTranslation()
   const photo = listing.photo_urls?.[0] || listing.photo_url
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [shareMessage, setShareMessage] = useState('')
+  const animals = listing.listing_type === 'offer_sitting'
+    ? listing.can_care_for
+    : listing.pet_types?.length ? listing.pet_types : [listing.pet_type]
+  const animalNames = animals.map((type) => t(`petTypes.${type}`)).join(' & ')
+
+  async function copyFacebookPost() {
+    const details = listing.listing_type === 'need_sitter'
+      ? `🐾 PETS: ${animalNames} — ${listing.pet_name}, ${listing.pet_age} ${t('years')}, ${listing.pet_breed}\n🏠 HOME: ${listing.house_type ? t(`houseTypes.${listing.house_type}`) : ''} — ${listing.offers.filter((offer) => offer !== 'free_stay').map((offer) => t(`offerOptions.${offer}`)).join(', ')}`
+      : `🧳 SIT: ${animalNames}\n👥 ${t(`partyTypes.${listing.sitter_type ?? 'single'}`)} · ${t(`smokerOptions.${listing.smoker ?? 'non_smoker'}`)} · ${listing.special_skills.map((skill) => t(`specialSkillOptions.${skill}`)).join(', ')}`
+    const text = [
+      `📍 WHERE: ${listing.city}, ${listing.country}`,
+      `📅 WHEN: ${listing.starts_on} to ${listing.ends_on}`,
+      details,
+      ...(listing.listing_type === 'need_sitter' ? [t('vetPlanShare')] : []),
+      `💬 LANGUAGES: ${listing.languages.map((language) => language.toUpperCase()).join(' ')}`,
+      t('facebookMessageHint'),
+      `${window.location.origin}/#listing-${listing.id}`,
+    ].join('\n')
+    setShareMessage('')
+    try {
+      await navigator.clipboard.writeText(text)
+      setShareMessage(t('facebookPostCopied'))
+    } catch {
+      setShareMessage(t('facebookCopyFailed'))
+    }
+  }
 
   return (
     <article className="listing-card" id={`listing-${listing.id}`}>
       <div className="listing-image-wrap">
-        {photo ? (
-          <img className="listing-photo" src={photo} alt={t('petAtHome', { pet: listing.pet_name, city: listing.city })} />
-        ) : (
-          <div className="listing-photo listing-photo-empty" aria-hidden="true">🐾</div>
-        )}
+        {photo ? <img className="listing-photo" src={photo} alt={t('petAtHome', { pet: listing.pet_name ?? t('availableSitter'), city: listing.city })} /> : <div className="listing-photo listing-photo-empty" aria-hidden="true">🐾</div>}
         {(listing.photo_urls?.length ?? 0) > 1 && <span className="photo-count">{t('photoCountBadge', { count: listing.photo_urls.length })}</span>}
       </div>
       <div className="listing-body">
         <p className="listing-location"><span aria-hidden="true">📍</span> {listing.city}, {listing.country}</p>
-        <h3>{t('generatedListingTitle', { city: listing.city, pet: listing.pet_name })}</h3>
+        <h3>{listing.title}</h3>
         <p className="listing-pet">
-          <span aria-hidden="true">{listing.pet_type === 'cat' ? '🐱' : listing.pet_type === 'dog' ? '🐶' : '🐾'}</span>
-          {' '}{t('petAndName', { type: t(`petTypes.${listing.pet_type}`), name: listing.pet_name })}
-          {listing.pet_details && <span> · {listing.pet_details}</span>}
+          <span aria-hidden="true">{listing.listing_type === 'offer_sitting' ? '🧳' : '🐾'}</span>{' '}
+          {listing.listing_type === 'need_sitter'
+            ? t('petAndName', { type: animalNames, name: listing.pet_name ?? '' })
+            : `${t('availableSitter')}: ${animalNames} · ${t(`experienceRanges.${listing.experience_years}`)}`}
+          {listing.listing_type === 'need_sitter' && (listing.pet_age || listing.pet_breed) && <span> · {[listing.pet_age ? `${listing.pet_age} ${t('years')}` : '', listing.pet_breed].filter(Boolean).join(' · ')}</span>}
         </p>
         <p className={`listing-description ${descriptionExpanded ? 'is-expanded' : ''}`}>{listing.description}</p>
-        {listing.description.length > 120 && (
-          <button className="read-more-button" type="button" aria-expanded={descriptionExpanded} onClick={() => setDescriptionExpanded((expanded) => !expanded)}>
-            {t(descriptionExpanded ? 'readLess' : 'readMore')}
-          </button>
-        )}
+        {listing.description.length > 120 && <button className="read-more-button" type="button" aria-expanded={descriptionExpanded} onClick={() => setDescriptionExpanded((expanded) => !expanded)}>{t(descriptionExpanded ? 'readLess' : 'readMore')}</button>}
         <div className="listing-trust">
-          <span className="trust-badge"><span aria-hidden="true">✦</span> {t('reviewsComing')}</span>
+          {listing.listing_type === 'offer_sitting' && owner?.id_verified && <span className="trust-badge"><span aria-hidden="true">✓</span> {t('idVerified')}</span>}
+          {owner?.total_reviews ? <span className="trust-badge">★ {owner.avg_rating?.toFixed(1)} ({owner.total_reviews})</span> : null}
+          {listing.listing_type === 'offer_sitting' && owner?.references_count ? <span className="trust-badge">{t('referencesCount', { count: owner.references_count })}</span> : null}
           {owner && <span className="trust-badge"><span aria-hidden="true">✓</span> {t('memberProfile')}</span>}
         </div>
         <div className="listing-meta">
           <span><span aria-hidden="true">📅</span> {formatDate(listing.starts_on)} – {formatDate(listing.ends_on)} · {t('nightsCount', { count: nightsBetween(listing.starts_on, listing.ends_on) })}</span>
-          {listing.house_type && <span><span aria-hidden="true">🏠</span> {t(`houseTypes.${listing.house_type}`)}</span>}
+          {listing.listing_type === 'need_sitter' && listing.house_type && <span><span aria-hidden="true">🏠</span> {t(`houseTypes.${listing.house_type}`)}</span>}
         </div>
+        {listing.languages.length > 0 && <p className="listing-languages" aria-label={t('languagesYouSpeak')}>{listing.languages.map((language) => language.toUpperCase()).join(' · ')}</p>}
         <div className="listing-card-footer">
           <span>{t('hostedBy', { name: owner?.display_name || t('petOwner') })}</span>
-          {currentUserId !== listing.owner_id && (
-            <button className="button button-small" type="button" onClick={() => onChat(listing)}>
-              {t('chatWithOwner')}
-            </button>
-          )}
+          <div className="listing-card-actions">
+            <button className="button button-small button-outline" type="button" onClick={() => void copyFacebookPost()}>{t('copyFacebookPost')}</button>
+            {currentUserId !== listing.owner_id && <button className="button button-small" type="button" onClick={() => onChat(listing)}>{t('messageReply')}</button>}
+          </div>
         </div>
+        {shareMessage && <p className={shareMessage === t('facebookPostCopied') ? 'form-hint' : 'form-error'} role="status">{shareMessage}</p>}
       </div>
     </article>
   )
@@ -64,7 +88,5 @@ function nightsBetween(start: string, end: string) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(
-    new Date(`${value}T12:00:00`),
-  )
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(new Date(`${value}T12:00:00`))
 }

@@ -10,14 +10,16 @@ type PhotoUploadFieldProps = {
   onChange: (files: File[]) => void
   disabled?: boolean
   maxFiles?: number
+  addLabel?: string
 }
 
-export function PhotoUploadField({ files, onChange, disabled = false, maxFiles = MAX_PHOTOS }: PhotoUploadFieldProps) {
+export function PhotoUploadField({ files, onChange, disabled = false, maxFiles = MAX_PHOTOS, addLabel }: PhotoUploadFieldProps) {
   const { t } = useTranslation()
   const inputId = useId()
   const [previews, setPreviews] = useState<string[]>([])
   const [error, setError] = useState('')
   const previewUrls = useRef<string[]>([])
+  const canAddMore = !disabled && files.length < maxFiles
 
   useEffect(() => {
     return () => previewUrls.current.forEach((url) => URL.revokeObjectURL(url))
@@ -55,35 +57,47 @@ export function PhotoUploadField({ files, onChange, disabled = false, maxFiles =
 
   return (
     <div className="photo-upload">
-      <div className={`photo-dropzone ${disabled ? 'is-disabled' : ''}`}>
+      <div className={`photo-dropzone ${canAddMore ? '' : 'is-disabled'}`}>
         <input
           id={inputId}
           type="file"
+          autoComplete="off"
           accept="image/jpeg,image/png,image/webp,image/avif"
           multiple
-          disabled={disabled || files.length >= maxFiles}
+          disabled={!canAddMore}
           onChange={(event) => {
             addFiles(event.currentTarget.files)
             event.currentTarget.value = ''
           }}
         />
-        <label className="photo-dropzone-prompt" htmlFor={inputId}>
-          <span className="photo-upload-icon" aria-hidden="true">＋</span>
-          <span><strong>{t('addPhotos')}</strong><small>{t('photoUploadHelp', { count: maxFiles - files.length })}</small></span>
-        </label>
+        {canAddMore ? (
+          <label className="photo-dropzone-prompt" htmlFor={inputId}>
+            <span className="photo-upload-icon" aria-hidden="true">＋</span>
+            <span>
+              <strong>{t(files.length > 0 ? 'addMorePhotos' : addLabel ?? 'addPhotos')}</strong>
+              <small>{files.length > 0 ? t('photosSelected', { count: files.length }) : t('photoUploadHelp', { count: maxFiles - files.length })}</small>
+            </span>
+          </label>
+        ) : files.length > 0 ? (
+          <span className="photo-dropzone-prompt">
+            <span className="photo-upload-icon" aria-hidden="true">✓</span>
+            <span><strong>{t('photosSelected', { count: files.length })}</strong></span>
+          </span>
+        ) : null}
         {previews.length > 0 && (
           <div className="photo-preview-grid is-inline">
-          {previews.map((preview, index) => (
-            <div className="photo-preview" key={`${files[index].name}-${files[index].lastModified}`}>
-              <img src={preview} alt={t('photoPreview', { number: index + 1 })} />
-              <button
-                type="button"
-                aria-label={t('removePhoto', { number: index + 1 })}
-                disabled={disabled}
-                onClick={() => removeFile(index)}
-              >×</button>
-            </div>
-          ))}
+            {previews.map((preview, index) => (
+              <div className="photo-preview" key={`${files[index].name}-${files[index].lastModified}`}>
+                <img src={preview} alt={t('photoPreview', { number: index + 1 })} />
+                <button
+                  type="button"
+                  aria-label={t('removePhoto', { number: index + 1 })}
+                  disabled={disabled}
+                  onClick={() => removeFile(index)}
+                >×</button>
+                <small className="photo-filename" title={files[index].name}>{files[index].name}</small>
+              </div>
+            ))}
           </div>
         )}
       </div>
