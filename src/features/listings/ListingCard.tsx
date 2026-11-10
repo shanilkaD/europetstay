@@ -73,7 +73,7 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
         <div className="listing-card-footer">
           <span>{t('hostedBy', { name: owner?.display_name || t('petOwner') })}</span>
           <div className="listing-card-actions">
-            <button className="button button-small button-outline" type="button" onClick={() => void copyFacebookPost()}>{t('copyFacebookPost')}</button>
+            {currentUserId === listing.owner_id && <button className="button button-small button-outline" type="button" onClick={() => void copyFacebookPost()}>{t('copyFacebookPost')}</button>}
             {currentUserId !== listing.owner_id && <button className="button button-small" type="button" onClick={() => onChat(listing)}>{t('messageReply')}</button>}
           </div>
         </div>
