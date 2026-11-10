@@ -8,6 +8,7 @@ import { ListingCard } from '../features/listings/ListingCard'
 import { MyListingsDialog } from '../features/listings/MyListingsDialog'
 import { StructuredListingDialog } from '../features/listings/StructuredListingDialog'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { Analytics } from '@vercel/analytics/react'
 import type { Listing, Profile } from '../types/database'
 import './App.css'
 
@@ -471,6 +472,7 @@ export default function App() {
         onOpenConversation={(listing, conversationId) => startChat(listing, conversationId)}
       />}
       {chatTarget && user && <ChatDialog key={`${chatTarget.listing.id}:${chatTarget.conversationId ?? 'new'}`} listing={chatTarget.listing} conversationId={chatTarget.conversationId} user={user} onClose={() => setChatTarget(null)} />}
+      <Analytics />
     </div>
   )
 }
