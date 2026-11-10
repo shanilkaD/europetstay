@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Listing, Profile } from '../../types/database'
 
@@ -11,13 +11,21 @@ type ListingCardProps = {
 
 export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCardProps) {
   const { t } = useTranslation()
-  const photo = listing.photo_urls?.[0] || listing.photo_url
+  const photos = [...new Set([...(listing.photo_urls ?? []), ...(listing.photo_url ? [listing.photo_url] : [])])]
+  const photo = photos[0]
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [shareMessage, setShareMessage] = useState('')
+  const [galleryOpen, setGalleryOpen] = useState(false)
+  const galleryDialogRef = useRef<HTMLDialogElement>(null)
   const animals = listing.listing_type === 'offer_sitting'
     ? listing.can_care_for
     : listing.pet_types?.length ? listing.pet_types : [listing.pet_type]
   const animalNames = animals.map((type) => t(`petTypes.${type}`)).join(' & ')
+
+  useEffect(() => {
+    const dialog = galleryDialogRef.current
+    if (galleryOpen && dialog && !dialog.open) dialog.showModal()
+  }, [galleryOpen])
 
   async function copyFacebookPost() {
     const details = listing.listing_type === 'need_sitter'
@@ -44,8 +52,12 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
   return (
     <article className="listing-card" id={`listing-${listing.id}`}>
       <div className="listing-image-wrap">
-        {photo ? <img className="listing-photo" src={photo} alt={t('petAtHome', { pet: listing.pet_name ?? t('availableSitter'), city: listing.city })} /> : <div className="listing-photo listing-photo-empty" aria-hidden="true">🐾</div>}
-        {(listing.photo_urls?.length ?? 0) > 1 && <span className="photo-count">{t('photoCountBadge', { count: listing.photo_urls.length })}</span>}
+        {photo ? (
+          <button className="listing-photo-button" type="button" onClick={() => setGalleryOpen(true)} aria-label={t('viewListingPhotos', { count: photos.length })}>
+            <img className="listing-photo" src={photo} alt={t('petAtHome', { pet: listing.pet_name ?? t('availableSitter'), city: listing.city })} />
+          </button>
+        ) : <div className="listing-photo listing-photo-empty" aria-hidden="true">🐾</div>}
+        {photos.length > 1 && <button className="photo-count" type="button" onClick={() => setGalleryOpen(true)} aria-label={t('viewListingPhotos', { count: photos.length })}>{t('photoCountBadge', { count: photos.length })}</button>}
       </div>
       <div className="listing-body">
         <p className="listing-location"><span aria-hidden="true">📍</span> {listing.city}, {listing.country}</p>
@@ -79,6 +91,21 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
         </div>
         {shareMessage && <p className={shareMessage === t('facebookPostCopied') ? 'form-hint' : 'form-error'} role="status">{shareMessage}</p>}
       </div>
+      <dialog
+        ref={galleryDialogRef}
+        className="photo-gallery-dialog"
+        aria-label={t('listingPhotosGallery', { title: listing.title })}
+        onClose={() => setGalleryOpen(false)}
+        onCancel={() => setGalleryOpen(false)}
+      >
+        <div className="photo-gallery-header">
+          <h2>{t('listingPhotosGallery', { title: listing.title })}</h2>
+          <button className="photo-gallery-close" type="button" onClick={() => galleryDialogRef.current?.close()} aria-label={t('close')}>×</button>
+        </div>
+        <div className="photo-gallery-grid">
+          {photos.map((url, index) => <img key={url} src={url} alt={`${listing.title} ${index + 1}`} />)}
+        </div>
+      </dialog>
     </article>
   )
 }

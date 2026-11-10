@@ -155,8 +155,6 @@ export default function App() {
   }, [activeDialog, chatTarget, needsRoleChoice])
 
   const filteredListings = listings
-  const featuredListing = listings.find((listing) => listing.photo_urls?.[0] || listing.photo_url)
-  const featuredPhoto = featuredListing?.photo_urls?.[0] ?? featuredListing?.photo_url
 
   async function handleSignOut() {
     setActionError('')
@@ -288,15 +286,10 @@ export default function App() {
           <p className="eyebrow">{t('howEyebrow')}</p>
           <h2>{t('howTitle')}</h2>
           <div className="steps-grid">
-            <article><span>01</span><h3>{t('stepOneTitle')}</h3><p>{t('stepOneText')}</p></article>
-            <article><span>02</span><h3>{t('stepTwoTitle')}</h3><p>{t('stepTwoText')}</p></article>
-            <article><span>03</span><h3>{t('stepThreeTitle')}</h3><p>{t('stepThreeText')}</p></article>
-            <article className="review-step">
-              <div className="review-step-photo">
-                {featuredPhoto ? <img src={featuredPhoto} alt="" /> : <span aria-hidden="true">🐾</span>}
-              </div>
-              <div><span>04</span><h3>{t('stepFourTitle')}</h3><p>{t('stepFourText')}</p></div>
-            </article>
+            <article><div className="step-visual" aria-hidden="true">🏠</div><span>01</span><h3>{t('stepOneTitle')}</h3><p>{t('stepOneText')}</p></article>
+            <article><div className="step-visual" aria-hidden="true">💬</div><span>02</span><h3>{t('stepTwoTitle')}</h3><p>{t('stepTwoText')}</p></article>
+            <article><div className="step-visual" aria-hidden="true">🧳</div><span>03</span><h3>{t('stepThreeTitle')}</h3><p>{t('stepThreeText')}</p></article>
+            <article><div className="step-visual" aria-hidden="true">🐾</div><span>04</span><h3>{t('stepFourTitle')}</h3><p>{t('stepFourText')}</p></article>
           </div>
           <aside className="safety-note" id="safety">
             <h3>{t('safetyTitle')}</h3>
