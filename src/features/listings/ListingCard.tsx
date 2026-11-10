@@ -73,10 +73,14 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
         {listing.description.length > 120 && <button className="read-more-button" type="button" aria-expanded={descriptionExpanded} onClick={() => setDescriptionExpanded((expanded) => !expanded)}>{t(descriptionExpanded ? 'readLess' : 'readMore')}</button>}
         <div className="listing-trust">
           {listing.listing_type === 'offer_sitting' && owner?.id_verified && <span className="trust-badge"><span aria-hidden="true">✓</span> {t('idVerified')}</span>}
-          {owner?.total_reviews ? <span className="trust-badge">★ {owner.avg_rating?.toFixed(1)} ({owner.total_reviews})</span> : null}
           {listing.listing_type === 'offer_sitting' && owner?.references_count ? <span className="trust-badge">{t('referencesCount', { count: owner.references_count })}</span> : null}
           {owner && <span className="trust-badge"><span aria-hidden="true">✓</span> {t('memberProfile')}</span>}
         </div>
+        {listing.listing_type === 'offer_sitting' && <p className="reviews-placeholder">{t('reviewsComingTrustHint')}</p>}
+        <aside className="chat-trust-hint">
+          <strong>{t('chatTrustTitle')}</strong>
+          <span>{t('chatTrustDescription')}</span>
+        </aside>
         <div className="listing-meta">
           <span><span aria-hidden="true">📅</span> {formatDate(listing.starts_on)} – {formatDate(listing.ends_on)} · {t('nightsCount', { count: nightsBetween(listing.starts_on, listing.ends_on) })}</span>
           {listing.listing_type === 'need_sitter' && listing.house_type && <span><span aria-hidden="true">🏠</span> {t(`houseTypes.${listing.house_type}`)}</span>}

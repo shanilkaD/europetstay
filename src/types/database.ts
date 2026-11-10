@@ -1,8 +1,10 @@
 export type Profile = {
   id: string
+  full_name?: string
   display_name: string
   avatar_url: string | null
   user_role?: 'owner' | 'sitter' | null
+  sitter_type?: 'local' | 'travelling' | 'both'
   id_verified?: boolean
   references_count?: number
   avg_rating?: number
@@ -123,8 +125,8 @@ export type Database = {
     Tables: {
       profiles: Table<
         Profile,
-        Pick<Profile, 'id'> & Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'user_role' | 'id_verified' | 'references_count' | 'avg_rating' | 'total_reviews'>>,
-        Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'user_role' | 'id_verified' | 'references_count' | 'avg_rating' | 'total_reviews'>>
+        Pick<Profile, 'id'> & Partial<Pick<Profile, 'full_name' | 'display_name' | 'avatar_url' | 'user_role' | 'sitter_type' | 'id_verified' | 'references_count' | 'avg_rating' | 'total_reviews'>>,
+        Partial<Pick<Profile, 'full_name' | 'display_name' | 'avatar_url' | 'user_role' | 'sitter_type' | 'id_verified' | 'references_count' | 'avg_rating' | 'total_reviews'>>
       >
       listings: Table<
         Listing,

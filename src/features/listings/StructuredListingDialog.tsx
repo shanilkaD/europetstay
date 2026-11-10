@@ -67,6 +67,7 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
   const [languages, setLanguages] = useState(listing?.languages ?? [])
   const [description, setDescription] = useState(listing?.description ?? '')
   const [sitterType, setSitterType] = useState<NonNullable<Listing['sitter_type']> | ''>(listing?.sitter_type ?? '')
+  const [sitterAvailability, setSitterAvailability] = useState<'local' | 'travelling' | 'both'>('both')
   const [experienceYears, setExperienceYears] = useState(listing?.experience_years ?? '')
   const [canCareFor, setCanCareFor] = useState(listing?.can_care_for ?? [])
   const [specialSkills, setSpecialSkills] = useState(listing?.special_skills ?? [])
@@ -137,6 +138,20 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
     void loadPrivateFields()
     return () => { active.current = false }
   }, [listing, t, userId])
+
+  useEffect(() => {
+    if (!supabase || type !== 'offer_sitting') return
+    let active = true
+    void supabase.from('profiles').select('sitter_type').eq('id', userId).maybeSingle().then(({ data, error }) => {
+      if (!active) return
+      if (error) {
+        setErrorMessage(error.message)
+      } else if (data?.sitter_type === 'local' || data?.sitter_type === 'travelling' || data?.sitter_type === 'both') {
+        setSitterAvailability(data.sitter_type)
+      }
+    })
+    return () => { active = false }
+  }, [type, userId])
 
   function toggle(values: string[], setValues: (next: string[]) => void, value: string, checked: boolean) {
     setValues(checked ? [...new Set([...values, value])] : values.filter((item) => item !== value))
@@ -305,6 +320,10 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
       if (result.error) throw result.error
       const saved = result.data
       if (!listing) newlyCreatedListingId = saved.id
+      if (type === 'offer_sitting') {
+        const { error } = await supabase.from('profiles').update({ sitter_type: sitterAvailability }).eq('id', userId)
+        if (error) throw error
+      }
 
       if (type === 'need_sitter') {
         const { error } = await supabase.from('listing_private_details').upsert({
@@ -420,6 +439,7 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
                       <fieldset className="choice-fieldset"><legend>{t('specialSkills')}</legend><div className="choice-grid">{SKILLS.map((value) => <label key={value}><input type="checkbox" checked={specialSkills.includes(value)} onChange={(event) => toggle(specialSkills, setSpecialSkills, value, event.target.checked)} />{t(`specialSkillOptions.${value}`)}</label>)}</div></fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('smoking')}</legend><div className="choice-grid choice-inline">{SMOKER_OPTIONS.map((value) => <label key={value}><input type="radio" name="smoker" checked={smoker === value} onChange={() => setSmoker(value)} />{t(`smokerOptions.${value}`)}</label>)}</div></fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('whoAreYou')}</legend><div className="choice-grid choice-inline">{SITTER_TYPES.map((value) => <label key={value}><input type="radio" name="sitter_type" checked={sitterType === value} onChange={() => setSitterType(isSitterType(value) ? value : '')} />{t(`partyTypes.${value}`)}</label>)}</div></fieldset>
+                      <fieldset className="choice-fieldset"><legend>{t('sitterAvailability')}</legend><div className="choice-grid choice-inline">{(['local', 'travelling', 'both'] as const).map((value) => <label key={value}><input type="radio" name="sitter-availability-profile" checked={sitterAvailability === value} onChange={() => setSitterAvailability(value)} />{t(value === 'local' ? 'localSittersOnly' : value === 'travelling' ? 'travellingSitters' : 'localAndTravelling')}</label>)}</div></fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('bringOwnPet')}</legend><div className="choice-grid choice-inline">{BRING_OWN_PET_OPTIONS.map((value) => <label key={value}><input type="radio" name="bring_own_pet" checked={bringOwnPet === value} onChange={() => setBringOwnPet(isBringOwnPet(value) ? value : '')} />{t(`bringOwnPetOptions.${value}`)}</label>)}</div></fieldset>
                       <label className="form-label">{t('aboutYou')}<textarea className="form-input form-textarea" minLength={50} maxLength={2000} required rows={4} value={description} onChange={(event) => setDescription(event.target.value)} /></label>
                       <p className="character-guidance">{t('aboutMinimum')} <span>{description.length} / 50</span></p>

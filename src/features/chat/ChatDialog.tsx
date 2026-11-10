@@ -19,14 +19,7 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
   const [loading, setLoading] = useState(Boolean(supabase))
   const [sending, setSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const [reviewTargetId, setReviewTargetId] = useState('')
-  const [reviewExists, setReviewExists] = useState(false)
-  const [reviewRating, setReviewRating] = useState(0)
-  const [reviewComment, setReviewComment] = useState('')
-  const [reviewSubmitted, setReviewSubmitted] = useState(false)
-  const [reviewSending, setReviewSending] = useState(false)
   const [privateCareDetails, setPrivateCareDetails] = useState<ListingPrivateDetails | null>(null)
-  const [today] = useState(() => new Date().toISOString().slice(0, 10))
   const endRef = useRef<HTMLDivElement>(null)
 
   const markAsRead = useCallback(async (id: string) => {
@@ -90,14 +83,6 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
         if (cancelled.current || !id) return
         setConversationId(id)
         const conversationIdValue = id
-        const { data: participants, error: participantsError } = await client
-          .from('conversations')
-          .select('owner_id,sitter_id')
-          .eq('id', conversationIdValue)
-          .single()
-        if (participantsError) throw participantsError
-        if (cancelled.current) return
-        setReviewTargetId(user.id === participants.owner_id ? participants.sitter_id : participants.owner_id)
         if (listing.listing_type === 'need_sitter') {
           const { data: careDetails, error: careError } = await client
             .from('listing_private_details')
@@ -156,17 +141,6 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
   }, [existingConversationId, listing.id, listing.listing_type, listing.owner_id, markAsRead, t, user.id])
 
   useEffect(() => {
-    if (!supabase || listing.status !== 'completed' || listing.ends_on >= today) return
-    const active = { current: true }
-    void supabase.from('reviews').select('id').eq('listing_id', listing.id).eq('reviewer_id', user.id).maybeSingle().then(({ data, error }) => {
-      if (!active.current) return
-      if (error) setErrorMessage(error.message)
-      else setReviewExists(Boolean(data))
-    })
-    return () => { active.current = false }
-  }, [listing.ends_on, listing.id, listing.status, today, user.id])
-
-  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
@@ -192,34 +166,11 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
     }
   }
 
-  async function submitReview(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!supabase || !reviewTargetId || reviewRating < 1 || reviewSending) return
-    setReviewSending(true)
-    setErrorMessage('')
-    try {
-      const { error } = await supabase.from('reviews').insert({
-        listing_id: listing.id,
-        reviewer_id: user.id,
-        reviewed_id: reviewTargetId,
-        rating: reviewRating,
-        comment: reviewComment.trim(),
-      })
-      if (error) throw error
-      setReviewSubmitted(true)
-      setReviewExists(true)
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t('reviewSubmitFailed'))
-    } finally {
-      setReviewSending(false)
-    }
-  }
-
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section className="dialog chat-dialog" role="dialog" aria-modal="true" aria-labelledby="chat-title">
         <header className="chat-header">
-          <div><p className="eyebrow">{t('conversationAbout')}</p><h2 id="chat-title">{listing.title}</h2><p>{listing.city}, {listing.country}</p></div>
+          <div><p className="eyebrow">{t('conversationAbout')}</p><h2 id="chat-title">{listing.title}</h2><p>{listing.city}, {listing.country}</p><p className="chat-header-hint">{t('chatHeaderMeetHint')}</p></div>
           <button className="dialog-close" type="button" aria-label={t('close')} onClick={onClose}>×</button>
         </header>
         {privateCareDetails && (
@@ -241,17 +192,6 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
           ))}
           <div ref={endRef} />
         </div>
-        {listing.status === 'completed' && listing.ends_on < today && (
-          <section className="chat-review">
-            {reviewSubmitted ? <p>{t('reviewThanks')}</p> : reviewExists ? <p>{t('reviewAlreadyLeft')}</p> : (
-              <form onSubmit={(event) => void submitReview(event)}>
-                <label className="form-label">{t('leaveReview')}<select className="form-input" required value={reviewRating} onChange={(event) => setReviewRating(Number(event.target.value))}><option value={0}>{t('chooseRating')}</option>{[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{'★'.repeat(rating)} ({rating}/5)</option>)}</select></label>
-                <label className="form-label">{t('reviewComment')}<textarea className="form-input form-textarea" maxLength={1000} rows={2} value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} /></label>
-                <button className="button button-outline" type="submit" disabled={reviewSending || reviewRating < 1}>{reviewSending ? t('savingReview') : t('leaveReview')}</button>
-              </form>
-            )}
-          </section>
-        )}
         {(errorMessage || !supabase) && <p className="form-error chat-error" role="alert">{errorMessage || t('supabaseMissing')}</p>}
         <form className="chat-form" autoComplete="new-password" onSubmit={(event) => void sendMessage(event)}>
           <label className="sr-only" htmlFor="chat-draft">{t('message')}</label>

@@ -8,6 +8,7 @@ type AuthDialogProps = {
 }
 
 type AuthMode = 'signin' | 'signup' | 'reset'
+const AUTH_CALLBACK_URL = 'https://europetstay.vercel.app/auth/callback'
 
 export function AuthDialog({ onClose, onAuthenticated }: AuthDialogProps) {
   const { t } = useTranslation()
@@ -61,7 +62,7 @@ export function AuthDialog({ onClose, onAuthenticated }: AuthDialogProps) {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
-          options: { data: { full_name: name.trim() } },
+          options: { data: { full_name: name.trim() }, emailRedirectTo: AUTH_CALLBACK_URL },
         })
         if (error) throw error
         if (data.session && data.user) {
@@ -98,7 +99,7 @@ export function AuthDialog({ onClose, onAuthenticated }: AuthDialogProps) {
     setErrorMessage('')
     setSuccessMessage('')
     try {
-      const redirectTo = new URL(window.location.origin)
+      const redirectTo = new URL(AUTH_CALLBACK_URL)
       redirectTo.searchParams.set('password-recovery', '1')
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: redirectTo.toString() })
       if (error) throw error
@@ -121,7 +122,7 @@ export function AuthDialog({ onClose, onAuthenticated }: AuthDialogProps) {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: AUTH_CALLBACK_URL,
           scopes: 'email profile',
           queryParams: { prompt: 'select_account' },
         },

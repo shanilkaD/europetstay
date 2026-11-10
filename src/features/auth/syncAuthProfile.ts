@@ -15,7 +15,7 @@ export async function syncAuthProfile(user: User) {
   const avatarUrl = metadataText(user, 'avatar_url') || metadataText(user, 'picture') || null
   const { data: profile, error: loadError } = await supabase
     .from('profiles')
-    .select('display_name, avatar_url')
+    .select('full_name, display_name, avatar_url')
     .eq('id', user.id)
     .maybeSingle()
   if (loadError) throw loadError
@@ -23,6 +23,7 @@ export async function syncAuthProfile(user: User) {
   if (!profile) {
     const { error } = await supabase.from('profiles').insert({
       id: user.id,
+      full_name: providerName,
       display_name: displayName,
       avatar_url: avatarUrl,
     })
@@ -30,7 +31,10 @@ export async function syncAuthProfile(user: User) {
     return
   }
 
-  const update: { display_name?: string; avatar_url?: string } = {}
+  const update: { full_name?: string; display_name?: string; avatar_url?: string } = {}
+  if ((!profile.full_name?.trim() || (providerName && profile.full_name === emailName)) && providerName) {
+    update.full_name = providerName
+  }
   if ((!profile.display_name.trim() || (providerName && profile.display_name === emailName)) && displayName) {
     update.display_name = displayName
   }

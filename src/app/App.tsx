@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AuthDialog } from '../features/auth/AuthDialog'
+import { syncAuthProfile } from '../features/auth/syncAuthProfile'
 import { useAuth } from '../features/auth/useAuth'
 import { ChatDialog } from '../features/chat/ChatDialog'
 import { InboxDialog } from '../features/chat/InboxDialog'
@@ -15,6 +16,7 @@ import './App.css'
 type ListingRole = 'create' | 'sitter'
 type Dialog = 'auth' | 'role' | ListingRole | 'mine' | 'inbox' | null
 type ChatTarget = { listing: Listing; conversationId?: string } | null
+type SitterAvailabilityFilter = 'all' | 'local' | 'travelling'
 
 function isSitterType(value: string): value is NonNullable<Listing['sitter_type']> {
   return value === 'single' || value === 'couple' || value === 'family'
@@ -35,6 +37,7 @@ export default function App() {
   const [startDateFilter, setStartDateFilter] = useState('')
   const [endDateFilter, setEndDateFilter] = useState('')
   const [sitterTypeFilter, setSitterTypeFilter] = useState<NonNullable<Listing['sitter_type']> | ''>('')
+  const [sitterAvailabilityFilter, setSitterAvailabilityFilter] = useState<SitterAvailabilityFilter>('all')
   const [smokerFilter, setSmokerFilter] = useState<NonNullable<Listing['smoker']> | ''>('')
   const [skillFilter, setSkillFilter] = useState('')
   const [languageFilter, setLanguageFilter] = useState('')
@@ -45,7 +48,7 @@ export default function App() {
     new URLSearchParams(window.location.search).has('password-recovery') ? 'auth' : null,
   )
   const [pendingRole, setPendingRole] = useState<ListingRole | null>(null)
-  const [profileData, setProfileData] = useState<{ userId: string; userRole: Profile['user_role']; error: string } | null>(null)
+  const [profileData, setProfileData] = useState<{ userId: string; userRole: Profile['user_role']; fullName: string; error: string } | null>(null)
   const [chatTarget, setChatTarget] = useState<ChatTarget>(null)
   const [editingListing, setEditingListing] = useState<Listing | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -61,6 +64,28 @@ export default function App() {
     if (!supabase) return
     const requestId = ++listingRequestId.current
     setLoadingListings(true)
+    let matchingSitterIds: string[] | null = null
+    if (activePostTab === 'sitters' && sitterAvailabilityFilter !== 'all') {
+      const { data: matchingProfiles, error: matchingProfilesError } = await supabase
+        .from('profiles')
+        .select('id')
+        .in('sitter_type', sitterAvailabilityFilter === 'local' ? ['local', 'both'] : ['travelling', 'both'])
+      if (requestId !== listingRequestId.current) return
+      if (matchingProfilesError) {
+        setListingError(matchingProfilesError.message)
+        setListings([])
+        setLoadingListings(false)
+        return
+      }
+      matchingSitterIds = matchingProfiles.map((profile) => profile.id)
+      if (!matchingSitterIds.length) {
+        setListingError('')
+        setListings([])
+        setProfiles({})
+        setLoadingListings(false)
+        return
+      }
+    }
     let query = supabase
       .from('listings')
       .select('*')
@@ -68,6 +93,7 @@ export default function App() {
       .eq('listing_type', activePostTab === 'stays' ? 'need_sitter' : 'offer_sitting')
       .gte('ends_on', startDateFilter || new Date().toISOString().slice(0, 10))
       .order('created_at', { ascending: false })
+    if (matchingSitterIds) query = query.in('owner_id', matchingSitterIds)
     if (locationFilter.trim()) query = query.ilike('city', `%${locationFilter.trim()}%`)
     if (endDateFilter) query = query.lte('starts_on', endDateFilter)
     if (petFilter !== 'all') query = query.contains(activePostTab === 'stays' ? 'pet_types' : 'can_care_for', [petFilter])
@@ -91,14 +117,14 @@ export default function App() {
       const ownerIds = [...new Set(data.map((listing) => listing.owner_id))]
       const { data: owners, error: ownersError } = await supabase
         .from('profiles')
-        .select('id, display_name, avatar_url, id_verified, references_count, avg_rating, total_reviews, created_at, updated_at')
+        .select('id, full_name, display_name, avatar_url, sitter_type, id_verified, references_count, created_at, updated_at')
         .in('id', ownerIds)
       if (requestId !== listingRequestId.current) return
       if (ownersError) setListingError(ownersError.message)
       else setProfiles(Object.fromEntries(owners.map((owner) => [owner.id, owner])))
     } else setProfiles({})
     setLoadingListings(false)
-  }, [activePostTab, endDateFilter, languageFilter, locationFilter, petFilter, skillFilter, smokerFilter, startDateFilter, sitterTypeFilter, t])
+  }, [activePostTab, endDateFilter, languageFilter, locationFilter, petFilter, skillFilter, sitterAvailabilityFilter, smokerFilter, startDateFilter, sitterTypeFilter, t])
 
   // This effect starts an async Supabase request; it updates state only after that request resolves.
   // eslint-disable-next-line react/set-state-in-effect
@@ -109,12 +135,16 @@ export default function App() {
 
     let active = true
     const client = supabase
-    void client.from('profiles').select('user_role').eq('id', user.id).maybeSingle().then(({ data, error }) => {
+    void syncAuthProfile(user).then(async () => {
+      const { data, error } = await client.from('profiles').select('user_role, full_name').eq('id', user.id).maybeSingle()
       if (!active) return
-      setProfileData({ userId: user.id, userRole: data?.user_role ?? null, error: error?.message ?? '' })
+      setProfileData({ userId: user.id, userRole: data?.user_role ?? null, fullName: data?.full_name?.trim() ?? '', error: error?.message ?? '' })
+    }).catch((error: unknown) => {
+      if (!active) return
+      setProfileData({ userId: user.id, userRole: null, fullName: '', error: error instanceof Error ? error.message : t('profileLoadFailed') })
     })
     return () => { active = false }
-  }, [user])
+  }, [t, user])
 
   const saveUserRole = useCallback(async (role: NonNullable<Profile['user_role']>) => {
     if (!supabase || !user) return
@@ -122,13 +152,13 @@ export default function App() {
     const { data, error } = await client
       .from('profiles')
       .upsert({ id: user.id, user_role: role }, { onConflict: 'id' })
-      .select('user_role')
+      .select('user_role, full_name')
       .single()
     if (error) {
-      setProfileData({ userId: user.id, userRole: null, error: error.message })
+      setProfileData({ userId: user.id, userRole: null, fullName: '', error: error.message })
       return
     }
-    setProfileData({ userId: user.id, userRole: data.user_role, error: '' })
+    setProfileData({ userId: user.id, userRole: data.user_role, fullName: data.full_name?.trim() ?? '', error: '' })
     setPendingRole(null)
     setDialog(role === 'owner' ? 'create' : 'sitter')
   }, [user])
@@ -227,6 +257,7 @@ export default function App() {
           <span /><span />
         </button>
         <div className="header-actions">
+          {user && <span className="header-user-name">{profileMatchesUser ? profileData?.fullName || user.email : user.email}</span>}
           <label className="language-control">
             <span className="sr-only">{t('chooseLanguage')}</span>
             <select value={i18n.language.slice(0, 2)} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
@@ -257,6 +288,12 @@ export default function App() {
             <p className="eyebrow">{t('heroEyebrow')}</p>
             <h1>{t('heroTitle')}<br /><em>{t('heroHighlight')}</em></h1>
             <p className="hero-description">{t('heroDescription')}</p>
+            <div className="hero-trust-badges">
+              <span>{t('chatBeforeBook')}</span>
+              <span>{t('videoMeetRecommended')}</span>
+              <span>{t('localOrTravellingSitters')}</span>
+            </div>
+            <p className="hero-local-message">{t('localSittersHomepageLine')}</p>
             <a className="hero-link" href="#how-it-works">{t('howItWorks')} <span>→</span></a>
           </div>
           <div className="hero-art" aria-hidden="true">
@@ -297,6 +334,19 @@ export default function App() {
           </aside>
         </section>
 
+        <section className="faq-section" id="faq">
+          <p className="eyebrow">{t('faq')}</p>
+          <h2>{t('faqTitle')}</h2>
+          <div className="faq-list">
+            <article><h3>{t('faqCostQuestion')}</h3><p>{t('faqCostAnswer')}</p></article>
+            <article><h3>{t('faqDifferenceQuestion')}</h3><p>{t('faqDifferenceAnswer')}</p></article>
+            <article><h3>{t('faqTrustQuestion')}</h3><p>{t('faqTrustAnswer')}</p></article>
+            <article><h3>{t('faqMeetQuestion')}</h3><p>{t('faqMeetAnswer')}</p></article>
+            <article><h3>{t('faqLocalQuestion')}</h3><p>{t('faqLocalAnswer')}</p></article>
+            <article><h3>{t('faqReviewsQuestion')}</h3><p>{t('faqReviewsAnswer')}</p></article>
+          </div>
+        </section>
+
         <section className="stays-section" id="stays">
           <div className="section-heading">
             <div><p className="eyebrow">{t('latestListings')}</p><h2>{t(activePostTab === 'stays' ? 'staysTitle' : 'sittersTitle')}</h2></div>
@@ -309,6 +359,15 @@ export default function App() {
           <div className="advanced-search-filters">
             {activePostTab === 'sitters' && (
               <>
+                <fieldset className="sitter-availability-filter">
+                  <legend>{t('sitterAvailability')}</legend>
+                  {(['all', 'local', 'travelling'] as const).map((value) => (
+                    <label key={value}>
+                      <input type="radio" name="sitter-availability" checked={sitterAvailabilityFilter === value} onChange={() => setSitterAvailabilityFilter(value)} />
+                      {t(value === 'all' ? 'allSitters' : value === 'local' ? 'localSittersOnly' : 'travellingSitters')}
+                    </label>
+                  ))}
+                </fieldset>
                 <label>{t('sitterType')}<select value={sitterTypeFilter} onChange={(event) => { if (!event.target.value) setSitterTypeFilter(''); else if (isSitterType(event.target.value)) setSitterTypeFilter(event.target.value) }}><option value="">{t('anySitterType')}</option>{['single', 'couple', 'family'].map((value) => <option key={value} value={value}>{t(`partyTypes.${value}`)}</option>)}</select></label>
                 <label>{t('smoking')}<select value={smokerFilter} onChange={(event) => { if (!event.target.value) setSmokerFilter(''); else if (isSmoker(event.target.value)) setSmokerFilter(event.target.value) }}><option value="">{t('anySmoking')}</option><option value="non_smoker">{t('smokerOptions.non_smoker')}</option><option value="smoker">{t('smokerOptions.smoker')}</option></select></label>
                 <label>{t('specialSkills')}<select value={skillFilter} onChange={(event) => setSkillFilter(event.target.value)}><option value="">{t('anySkill')}</option>{['medical_care', 'anxiety', 'large_dogs', 'puppies', 'elderly_pets'].map((value) => <option key={value} value={value}>{t(`specialSkillOptions.${value}`)}</option>)}</select></label>
@@ -321,10 +380,11 @@ export default function App() {
             {(startDateFilter || endDateFilter) && <button type="button" onClick={() => { setStartDateFilter(''); setEndDateFilter('') }}>📅 {startDateFilter || '…'} – {endDateFilter || '…'} ×</button>}
             {petFilter !== 'all' && <button type="button" onClick={() => setPetFilter('all')}>🐾 {t(`petTypes.${petFilter}`)} ×</button>}
             {sitterTypeFilter && <button type="button" onClick={() => setSitterTypeFilter('')}>👥 {t(`partyTypes.${sitterTypeFilter}`)} ×</button>}
+            {sitterAvailabilityFilter !== 'all' && <button type="button" onClick={() => setSitterAvailabilityFilter('all')}>📍 {t(sitterAvailabilityFilter === 'local' ? 'localSittersOnly' : 'travellingSitters')} ×</button>}
             {smokerFilter && <button type="button" onClick={() => setSmokerFilter('')}>🚭 {t(`smokerOptions.${smokerFilter}`)} ×</button>}
             {skillFilter && <button type="button" onClick={() => setSkillFilter('')}>✦ {t(`specialSkillOptions.${skillFilter}`)} ×</button>}
             {languageFilter && <button type="button" onClick={() => setLanguageFilter('')}>💬 {languageFilter.toUpperCase()} ×</button>}
-            {(locationFilter || startDateFilter || endDateFilter || petFilter !== 'all' || sitterTypeFilter || smokerFilter || skillFilter || languageFilter) && <button className="clear-filter-button" type="button" onClick={() => { setLocationFilter(''); setStartDateFilter(''); setEndDateFilter(''); setPetFilter('all'); setSitterTypeFilter(''); setSmokerFilter(''); setSkillFilter(''); setLanguageFilter('') }}>{t('clearAllFilters')}</button>}
+            {(locationFilter || startDateFilter || endDateFilter || petFilter !== 'all' || sitterTypeFilter || sitterAvailabilityFilter !== 'all' || smokerFilter || skillFilter || languageFilter) && <button className="clear-filter-button" type="button" onClick={() => { setLocationFilter(''); setStartDateFilter(''); setEndDateFilter(''); setPetFilter('all'); setSitterTypeFilter(''); setSitterAvailabilityFilter('all'); setSmokerFilter(''); setSkillFilter(''); setLanguageFilter('') }}>{t('clearAllFilters')}</button>}
           </div>
           {listingError ? (
             <p className="form-error" role="alert">{t('listingLoadFailed')}: {listingError}</p>
@@ -341,7 +401,7 @@ export default function App() {
               <span aria-hidden="true">🐾</span>
               <h3>{t('noResultsTitle')}</h3>
               <p>{t('noMatchingListings', { city: locationFilter || t('anyCity'), dates: [startDateFilter, endDateFilter].filter(Boolean).join(' – ') || t('anyDates'), pet: petFilter === 'all' ? t('anyPet') : t(`petTypes.${petFilter}`) })}</p>
-              <button className="button button-outline" type="button" onClick={() => { setLocationFilter(''); setStartDateFilter(''); setEndDateFilter(''); setPetFilter('all'); setSitterTypeFilter(''); setSmokerFilter(''); setSkillFilter(''); setLanguageFilter('') }}>{t('clearAllFilters')}</button>
+              <button className="button button-outline" type="button" onClick={() => { setLocationFilter(''); setStartDateFilter(''); setEndDateFilter(''); setPetFilter('all'); setSitterTypeFilter(''); setSitterAvailabilityFilter('all'); setSmokerFilter(''); setSkillFilter(''); setLanguageFilter('') }}>{t('clearAllFilters')}</button>
             </div>
           )}
         </section>
@@ -366,7 +426,7 @@ export default function App() {
           </div>
           <div className="footer-column">
             <h2>{t('help')}</h2>
-            <a href="#how-it-works">{t('faq')}</a>
+            <a href="#faq">{t('faq')}</a>
             <a href="/trust-safety.html">{t('trustSafety')}</a>
             <a href="mailto:senadhee1999@gmail.com">{t('emailUs')}</a>
           </div>
@@ -388,7 +448,7 @@ export default function App() {
         </div>
         <div className="footer-bottom">
           <span>© {currentYear} EuroPetStay</span>
-          <span>{t('freeStay')} · {t('happyPets')}</span>
+          <span>{t('freeStayForSitters')}</span>
         </div>
       </footer>
 
