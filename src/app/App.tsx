@@ -341,7 +341,6 @@ export default function App() {
             <article><h3>{t('faqCostQuestion')}</h3><p>{t('faqCostAnswer')}</p></article>
             <article><h3>{t('faqDifferenceQuestion')}</h3><p>{t('faqDifferenceAnswer')}</p></article>
             <article><h3>{t('faqTrustQuestion')}</h3><p>{t('faqTrustAnswer')}</p></article>
-            <article><h3>{t('faqMeetQuestion')}</h3><p>{t('faqMeetAnswer')}</p></article>
             <article><h3>{t('faqLocalQuestion')}</h3><p>{t('faqLocalAnswer')}</p></article>
             <article><h3>{t('faqReviewsQuestion')}</h3><p>{t('faqReviewsAnswer')}</p></article>
           </div>

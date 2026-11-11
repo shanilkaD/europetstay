@@ -13,6 +13,8 @@ export type Profile = {
   updated_at: string
 }
 
+export type FeePeriod = 'per_day' | 'per_week' | 'per_stay'
+
 export type Listing = {
   id: string
   owner_id: string
@@ -36,6 +38,13 @@ export type Listing = {
   languages: string[]
   house_type: 'apartment' | 'house' | 'farm' | 'studio' | null
   offers: string[]
+  sitter_fee_amount: number | null
+  sitter_fee_currency: string
+  sitter_fee_period: FeePeriod
+  owner_payment_amount: number | null
+  owner_payment_currency: string
+  owner_payment_period: FeePeriod
+  in_person_meet_required: boolean
   house_rules: string[]
   starts_on: string
   ends_on: string
@@ -150,12 +159,12 @@ export type Database = {
       >
       listing_private_details: Table<
         ListingPrivateDetails,
-        Omit<ListingPrivateDetails, 'updated_at'>,
+        Omit<ListingPrivateDetails, 'updated_at' | 'who_pays_vet'> & Partial<Pick<ListingPrivateDetails, 'who_pays_vet'>>,
         Partial<Omit<ListingPrivateDetails, 'listing_id' | 'owner_id' | 'updated_at'>>
       >
       sitter_verification_submissions: Table<
         SitterVerificationSubmission,
-        Omit<SitterVerificationSubmission, 'updated_at'>,
+        Omit<SitterVerificationSubmission, 'updated_at' | 'agreed_to_rules'> & Partial<Pick<SitterVerificationSubmission, 'agreed_to_rules'>>,
         Partial<Omit<SitterVerificationSubmission, 'sitter_id' | 'updated_at'>>
       >
       conversation_reads: Table<

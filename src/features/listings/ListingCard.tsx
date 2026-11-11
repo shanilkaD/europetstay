@@ -21,6 +21,11 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
     ? listing.can_care_for
     : listing.pet_types?.length ? listing.pet_types : [listing.pet_type]
   const animalNames = animals.map((type) => t(`petTypes.${type}`)).join(' & ')
+  const feeAmount = listing.listing_type === 'need_sitter' ? listing.owner_payment_amount : listing.sitter_fee_amount
+  const feeCurrency = listing.listing_type === 'need_sitter' ? listing.owner_payment_currency : listing.sitter_fee_currency
+  const feePeriod = listing.listing_type === 'need_sitter' ? listing.owner_payment_period : listing.sitter_fee_period
+  const feeLabel = listing.listing_type === 'need_sitter' ? 'ownerPayment' : 'sitterFee'
+  const homeOffers = listing.offers.filter((offer) => offer !== 'free_stay').map((offer) => t(`offerOptions.${offer}`)).join(' · ')
 
   useEffect(() => {
     const dialog = galleryDialogRef.current
@@ -29,8 +34,16 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
 
   async function copyFacebookPost() {
     const details = listing.listing_type === 'need_sitter'
-      ? `🐾 PETS: ${animalNames} — ${listing.pet_name}, ${listing.pet_age} ${t('years')}, ${listing.pet_breed}\n🏠 HOME: ${listing.house_type ? t(`houseTypes.${listing.house_type}`) : ''} — ${listing.offers.filter((offer) => offer !== 'free_stay').map((offer) => t(`offerOptions.${offer}`)).join(', ')}`
-      : `🧳 SIT: ${animalNames}\n👥 ${t(`partyTypes.${listing.sitter_type ?? 'single'}`)} · ${t(`smokerOptions.${listing.smoker ?? 'non_smoker'}`)} · ${listing.special_skills.map((skill) => t(`specialSkillOptions.${skill}`)).join(', ')}`
+      ? [
+          `🐾 PETS: ${animalNames} — ${listing.pet_name}, ${listing.pet_age} ${t('years')}, ${listing.pet_breed}`,
+          `🏠 HOME: ${listing.house_type ? t(`houseTypes.${listing.house_type}`) : ''} — ${listing.offers.filter((offer) => offer !== 'free_stay').map((offer) => t(`offerOptions.${offer}`)).join(', ')}`,
+          `${t('accommodationProvided')}${listing.owner_payment_amount !== null ? ` · ${t('ownerPayment')}: ${formatAmount(listing.owner_payment_amount, listing.owner_payment_currency)} ${t(`feePeriods.${listing.owner_payment_period}`)}` : ''}`,
+        ].join('\n')
+      : [
+          `🧳 SIT: ${animalNames}`,
+          `👥 ${t(`partyTypes.${listing.sitter_type ?? 'single'}`)} · ${t(`smokerOptions.${listing.smoker ?? 'non_smoker'}`)} · ${listing.special_skills.map((skill) => t(`specialSkillOptions.${skill}`)).join(', ')}`,
+          ...(listing.sitter_fee_amount !== null ? [`${t('sitterFee')}: ${formatAmount(listing.sitter_fee_amount, listing.sitter_fee_currency)} ${t(`feePeriods.${listing.sitter_fee_period}`)}`] : []),
+        ].join('\n')
     const text = [
       `📍 WHERE: ${listing.city}, ${listing.country}`,
       `📅 WHEN: ${listing.starts_on} to ${listing.ends_on}`,
@@ -84,6 +97,8 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
         <div className="listing-meta">
           <span><span aria-hidden="true">📅</span> {formatDate(listing.starts_on)} – {formatDate(listing.ends_on)} · {t('nightsCount', { count: nightsBetween(listing.starts_on, listing.ends_on) })}</span>
           {listing.listing_type === 'need_sitter' && listing.house_type && <span><span aria-hidden="true">🏠</span> {t(`houseTypes.${listing.house_type}`)}</span>}
+          {listing.listing_type === 'need_sitter' && <span><span aria-hidden="true">🛏️</span> {t('accommodationProvided')}{homeOffers ? ` · ${homeOffers}` : ''}</span>}
+          {feeAmount !== null && <span><span aria-hidden="true">💶</span> {t(feeLabel)}: {formatAmount(feeAmount, feeCurrency)} {t(`feePeriods.${feePeriod}`)}</span>}
         </div>
         {listing.languages.length > 0 && <p className="listing-languages" aria-label={t('languagesYouSpeak')}>{listing.languages.map((language) => language.toUpperCase()).join(' · ')}</p>}
         <div className="listing-card-footer">
@@ -120,4 +135,8 @@ function nightsBetween(start: string, end: string) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(new Date(`${value}T12:00:00`))
+}
+
+function formatAmount(amount: number, currency: string) {
+  return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }

@@ -2,19 +2,20 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../../lib/supabase'
 import { capitalizeWords } from '../../lib/text'
-import type { Listing } from '../../types/database'
+import type { FeePeriod, Listing } from '../../types/database'
 import { PhotoUploadField } from './PhotoUploadField'
 
 const PET_TYPES = ['cat', 'dog', 'bird', 'other']
 const LANGUAGES = ['en', 'es', 'fr', 'de', 'other']
 const SKILLS = ['medical_care', 'anxiety', 'large_dogs', 'puppies', 'elderly_pets']
-const HOME_HAS = ['wifi', 'garden', 'car', 'washing_machine']
+const HOME_HAS = ['wifi', 'garden', 'car', 'washing_machine', 'meals']
+const CURRENCIES = ['EUR', 'GBP', 'CHF', 'DKK', 'NOK', 'SEK', 'PLN', 'CZK', 'HUF', 'RON', 'USD']
+const FEE_PERIODS = ['per_day', 'per_week', 'per_stay'] as const
 const CARE_NEEDS = ['feeding_twice_daily', 'walks_twice_daily', 'medical_care', 'anxious_pet', 'no_special_needs']
 const HOUSE_TYPES = ['house', 'apartment', 'farm', 'studio'] as const
 const SITTER_TYPES = ['single', 'couple', 'family'] as const
 const SMOKER_OPTIONS = ['non_smoker', 'smoker'] as const
 const BRING_OWN_PET_OPTIONS = ['no', 'dog', 'cat'] as const
-const VET_COST_OPTIONS = [['owner', 'ownerPays'], ['shared', 'sharedVetCosts']] as const
 const LISTING_TYPES = ['need_sitter', 'offer_sitting'] as const
 type ListingType = (typeof LISTING_TYPES)[number]
 
@@ -30,13 +31,21 @@ function isBringOwnPet(value: string): value is NonNullable<Listing['bring_own_p
   return BRING_OWN_PET_OPTIONS.some((item) => item === value)
 }
 
-function isWhoPaysVet(value: string): value is 'owner' | 'shared' {
-  return value === 'owner' || value === 'shared'
+function isFeePeriod(value: string): value is FeePeriod {
+  return FEE_PERIODS.some((period) => period === value)
 }
 
-function getWhoPaysVet(value: string, errorMessage: string): 'owner' | 'shared' {
-  if (!isWhoPaysVet(value)) throw new Error(errorMessage)
-  return value
+function isValidOptionalAmount(value: string) {
+  const amount = value.trim()
+  return amount === '' || (/^\d+(?:\.\d{1,2})?$/.test(amount) && Number(amount) <= 1_000_000)
+}
+
+function optionalAmount(value: string): number | null {
+  return value.trim() ? Number(value) : null
+}
+
+function formatAmount(amount: number, currency: string) {
+  return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 type Props = {
@@ -64,6 +73,12 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
   const [careNeeds, setCareNeeds] = useState(listing?.pet_care_needs ?? [])
   const [houseType, setHouseType] = useState<Exclude<Listing['house_type'], null> | ''>(listing?.house_type ?? '')
   const [homeHas, setHomeHas] = useState(listing?.offers?.filter((item) => item !== 'free_stay') ?? [])
+  const [sitterFeeAmount, setSitterFeeAmount] = useState(listing?.sitter_fee_amount?.toString() ?? '')
+  const [sitterFeeCurrency, setSitterFeeCurrency] = useState(listing?.sitter_fee_currency ?? 'EUR')
+  const [sitterFeePeriod, setSitterFeePeriod] = useState<FeePeriod>(listing?.sitter_fee_period ?? 'per_stay')
+  const [ownerPaymentAmount, setOwnerPaymentAmount] = useState(listing?.owner_payment_amount?.toString() ?? '')
+  const [ownerPaymentCurrency, setOwnerPaymentCurrency] = useState(listing?.owner_payment_currency ?? 'EUR')
+  const [ownerPaymentPeriod, setOwnerPaymentPeriod] = useState<FeePeriod>(listing?.owner_payment_period ?? 'per_stay')
   const [languages, setLanguages] = useState(listing?.languages ?? [])
   const [description, setDescription] = useState(listing?.description ?? '')
   const [sitterType, setSitterType] = useState<NonNullable<Listing['sitter_type']> | ''>(listing?.sitter_type ?? '')
@@ -78,14 +93,12 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
   const [existingDocumentPath, setExistingDocumentPath] = useState('')
   const [referenceName, setReferenceName] = useState('')
   const [referenceContact, setReferenceContact] = useState('')
-  const [agreeToRules, setAgreeToRules] = useState(false)
   const [medicalNeeds, setMedicalNeeds] = useState('')
   const [medicalCareNeeded, setMedicalCareNeeded] = useState<'yes' | 'no' | ''>('')
   const [vetName, setVetName] = useState('')
   const [vetPhone, setVetPhone] = useState('')
   const [emergencyName, setEmergencyName] = useState('')
   const [emergencyPhone, setEmergencyPhone] = useState('')
-  const [whoPaysVet, setWhoPaysVet] = useState<'owner' | 'shared' | ''>('')
   const [stepError, setStepError] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -120,14 +133,12 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
           setVetPhone(careResult.data.vet_phone)
           setEmergencyName(careResult.data.emergency_contact_name)
           setEmergencyPhone(careResult.data.emergency_contact_phone)
-          setWhoPaysVet(careResult.data.who_pays_vet)
         }
         if (verificationResult.error) setErrorMessage(verificationResult.error.message)
         else if (verificationResult.data) {
           setExistingDocumentPath(verificationResult.data.id_document_path ?? '')
           setReferenceName(verificationResult.data.reference_name)
           setReferenceContact(verificationResult.data.reference_contact)
-          setAgreeToRules(verificationResult.data.agreed_to_rules)
         }
       } catch (error) {
         if (active.current) setErrorMessage(error instanceof Error ? error.message : t('listingLoadFailed'))
@@ -189,23 +200,25 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
     const validLanguages = languages.length > 0
     if (!validLanguages) return setStepError(t('languagesRequired'))
     if (type === 'need_sitter') {
+      if (!isValidOptionalAmount(ownerPaymentAmount)) return setStepError(t('feeAmountInvalid'))
       if (petTypes.length === 0) return setStepError(t('petTypeRequired'))
       if (careNeeds.length === 0) return setStepError(t('careNeedsRequired'))
       if (!petName.trim() || !petAge || !breed.trim() || !houseType) return setStepError(t('completePetAndHome'))
       if (description.trim().length < 20) return setStepError(t('descriptionMinimum'))
       if (!medicalCareNeeded) return setStepError(t('medicalNeedsRequired'))
       if (medicalCareNeeded === 'yes' && !medicalNeeds.trim()) return setStepError(t('medicalNeedsDetailsRequired'))
-      if (!vetName.trim() || !vetPhone.trim() || !emergencyName.trim() || !emergencyPhone.trim() || !whoPaysVet) {
+      if (!emergencyName.trim() || !emergencyPhone.trim()) {
         return setStepError(t('careContactsRequired'))
       }
     } else {
+      if (!isValidOptionalAmount(sitterFeeAmount)) return setStepError(t('feeAmountInvalid'))
       if (canCareFor.length === 0) return setStepError(t('sitterAnimalsRequired'))
       if (description.trim().length < 50) return setStepError(t('aboutMinimum'))
       if (!experienceYears || !sitterType || !smoker || !bringOwnPet) return setStepError(t('completeSitterPreferences'))
       if (!photos.length && !listing?.photo_urls?.length && !listing?.photo_url) return setStepError(t('sitterPhotoRequired'))
       if (idDocument && !['image/jpeg', 'image/png', 'application/pdf'].includes(idDocument.type)) return setStepError(t('idDocumentTypeError'))
       if (idDocument && idDocument.size > 10 * 1024 * 1024) return setStepError(t('idDocumentSizeError'))
-      if (!referenceName.trim() || !referenceContact.trim() || !agreeToRules) return setStepError(t('completeTrustChecklist'))
+      if (!referenceName.trim() || !referenceContact.trim()) return setStepError(t('completeTrustChecklist'))
     }
     setStepError('')
     setStep(3)
@@ -217,12 +230,6 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
     if (step === 1) return continueToDetails()
     if (step === 2) return continueToPreview()
     if (!supabase) return setErrorMessage(t('supabaseMissing'))
-    if (type === 'need_sitter' && !isWhoPaysVet(whoPaysVet)) {
-      setErrorMessage(t('careContactsRequired'))
-      setStep(2)
-      return
-    }
-
     const normalizedCity = capitalizeWords(city)
     const petTypesForListing = type === 'need_sitter' ? petTypes : canCareFor
     const normalizedPetName = type === 'need_sitter' ? capitalizeWords(petName) : null
@@ -249,6 +256,13 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
       pet_care_needs: type === 'need_sitter' ? careNeeds : [],
       house_type: type === 'need_sitter' ? houseType as Listing['house_type'] : null,
       offers: type === 'need_sitter' ? [...homeHas, 'free_stay'] : [],
+      sitter_fee_amount: type === 'offer_sitting' ? optionalAmount(sitterFeeAmount) : null,
+      sitter_fee_currency: sitterFeeCurrency,
+      sitter_fee_period: sitterFeePeriod,
+      owner_payment_amount: type === 'need_sitter' ? optionalAmount(ownerPaymentAmount) : null,
+      owner_payment_currency: ownerPaymentCurrency,
+      owner_payment_period: ownerPaymentPeriod,
+      in_person_meet_required: listing?.in_person_meet_required ?? false,
       house_rules: [],
       can_care_for: type === 'offer_sitting' ? canCareFor : [],
       experience_years: type === 'offer_sitting' ? experienceYears : '',
@@ -304,7 +318,6 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
           id_document_path: documentPath,
           reference_name: referenceName.trim(),
           reference_contact: referenceContact.trim(),
-          agreed_to_rules: agreeToRules,
         }, { onConflict: 'sitter_id' })
         if (error) throw error
         verificationSaved = true
@@ -334,7 +347,6 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
           vet_phone: vetPhone.trim(),
           emergency_contact_name: emergencyName.trim(),
           emergency_contact_phone: emergencyPhone.trim(),
-          who_pays_vet: getWhoPaysVet(whoPaysVet, t('careContactsRequired')),
         }, { onConflict: 'listing_id' })
         if (error) throw new Error(`${t('listingSavedPrivateDetailsFailed')}: ${error.message}`)
       }
@@ -416,17 +428,26 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
                       <fieldset className="choice-fieldset"><legend>{t('petCareNeeds')}</legend><div className="choice-grid">{CARE_NEEDS.map((value) => <label key={value}><input type="checkbox" checked={careNeeds.includes(value)} onChange={(event) => toggleCareNeed(value, event.target.checked)} />{t(`careOptions.${value}`)}</label>)}</div></fieldset>
                       <label className="form-label">{t('houseType')}<select className="form-input" required value={houseType} onChange={(event) => setHouseType(isHouseType(event.target.value) ? event.target.value : '')}><option value="">{t('selectHouseType')}</option>{HOUSE_TYPES.map((value) => <option key={value} value={value}>{t(`houseTypes.${value}`)}</option>)}</select></label>
                       <fieldset className="choice-fieldset"><legend>{t('yourHomeHas')}</legend><div className="choice-grid choice-inline">{HOME_HAS.map((value) => <label key={value}><input type="checkbox" checked={homeHas.includes(value)} onChange={(event) => toggle(homeHas, setHomeHas, value, event.target.checked)} />{t(`offerOptions.${value}`)}</label>)}</div></fieldset>
+                      <p className="fixed-offer">{t('accommodationProvided')}</p>
+                      <fieldset className="choice-fieldset">
+                        <legend>{t('ownerPayment')}</legend>
+                        <p className="arrangement-hint">{t('paymentOptionalHint')}</p>
+                        <div className="form-row price-row">
+                          <label className="form-label">{t('amount')}<input className="form-input" type="number" min="0" max="1000000" step="0.01" value={ownerPaymentAmount} onChange={(event) => setOwnerPaymentAmount(event.target.value)} /></label>
+                          <label className="form-label">{t('currency')}<select className="form-input" value={ownerPaymentCurrency} onChange={(event) => setOwnerPaymentCurrency(event.target.value)}>{CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select></label>
+                          <label className="form-label">{t('feePeriod')}<select className="form-input" value={ownerPaymentPeriod} onChange={(event) => setOwnerPaymentPeriod(isFeePeriod(event.target.value) ? event.target.value : 'per_stay')}>{FEE_PERIODS.map((period) => <option key={period} value={period}>{t(`feePeriods.${period}`)}</option>)}</select></label>
+                        </div>
+                      </fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('medicalCareNeeded')}</legend><div className="choice-grid choice-inline">{(['yes', 'no'] as const).map((value) => <label key={value}><input type="radio" name="medical_care_needed" checked={medicalCareNeeded === value} onChange={() => setMedicalCareNeeded(value)} />{t(`yesNo.${value}`)}</label>)}</div></fieldset>
                       {medicalCareNeeded === 'yes' && <label className="form-label">{t('medicalNeeds')}<textarea className="form-input form-textarea" rows={2} value={medicalNeeds} onChange={(event) => setMedicalNeeds(event.target.value)} /></label>}
                       <div className="form-row">
-                        <label className="form-label">{t('vetName')}<input className="form-input" required value={vetName} onChange={(event) => setVetName(event.target.value)} /></label>
-                        <label className="form-label">{t('vetPhone')}<input className="form-input" type="tel" required value={vetPhone} onChange={(event) => setVetPhone(event.target.value)} /></label>
+                        <label className="form-label">{t('vetName')} <span className="optional-field">{t('optional')}</span><input className="form-input" value={vetName} onChange={(event) => setVetName(event.target.value)} /></label>
+                        <label className="form-label">{t('vetPhone')} <span className="optional-field">{t('optional')}</span><input className="form-input" type="tel" value={vetPhone} onChange={(event) => setVetPhone(event.target.value)} /></label>
                       </div>
                       <div className="form-row">
                         <label className="form-label">{t('emergencyContactName')}<input className="form-input" required value={emergencyName} onChange={(event) => setEmergencyName(event.target.value)} /></label>
                         <label className="form-label">{t('emergencyContactPhone')}<input className="form-input" type="tel" required value={emergencyPhone} onChange={(event) => setEmergencyPhone(event.target.value)} /></label>
                       </div>
-                      <fieldset className="choice-fieldset"><legend>{t('whoPaysVet')}</legend><div className="choice-grid choice-inline">{VET_COST_OPTIONS.map(([value, key]) => <label key={value}><input type="radio" name="who_pays_vet" checked={whoPaysVet === value} onChange={() => setWhoPaysVet(value)} />{t(key)}</label>)}</div></fieldset>
                       <label className="form-label">{t('whatSitterShouldKnow')}<textarea className="form-input form-textarea" required minLength={20} maxLength={2000} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} /></label>
                       <p className="character-guidance">{t('descriptionMinimum')} <span>{description.length} / 20</span></p>
                       <p className="photo-field-hint">{t('listingPhotos')}</p>
@@ -437,6 +458,15 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
                       <fieldset className="choice-fieldset"><legend>{t('animalsYouCanCareFor')}</legend><div className="choice-grid choice-inline">{PET_TYPES.map((value) => <label key={value}><input type="checkbox" checked={canCareFor.includes(value)} onChange={(event) => toggle(canCareFor, setCanCareFor, value, event.target.checked)} />{t(`petTypes.${value}`)}</label>)}</div></fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('experienceYears')}</legend><div className="choice-grid choice-inline">{['0-1', '1-3', '3+'].map((value) => <label key={value}><input type="radio" name="experience_years" checked={experienceYears === value} onChange={() => setExperienceYears(value)} />{t(`experienceRanges.${value}`)}</label>)}</div></fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('specialSkills')}</legend><div className="choice-grid">{SKILLS.map((value) => <label key={value}><input type="checkbox" checked={specialSkills.includes(value)} onChange={(event) => toggle(specialSkills, setSpecialSkills, value, event.target.checked)} />{t(`specialSkillOptions.${value}`)}</label>)}</div></fieldset>
+                      <fieldset className="choice-fieldset">
+                        <legend>{t('sitterFee')}</legend>
+                        <p className="arrangement-hint">{t('paymentOptionalHint')}</p>
+                        <div className="form-row price-row">
+                          <label className="form-label">{t('amount')}<input className="form-input" type="number" min="0" max="1000000" step="0.01" value={sitterFeeAmount} onChange={(event) => setSitterFeeAmount(event.target.value)} /></label>
+                          <label className="form-label">{t('currency')}<select className="form-input" value={sitterFeeCurrency} onChange={(event) => setSitterFeeCurrency(event.target.value)}>{CURRENCIES.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</select></label>
+                          <label className="form-label">{t('feePeriod')}<select className="form-input" value={sitterFeePeriod} onChange={(event) => setSitterFeePeriod(isFeePeriod(event.target.value) ? event.target.value : 'per_stay')}>{FEE_PERIODS.map((period) => <option key={period} value={period}>{t(`feePeriods.${period}`)}</option>)}</select></label>
+                        </div>
+                      </fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('smoking')}</legend><div className="choice-grid choice-inline">{SMOKER_OPTIONS.map((value) => <label key={value}><input type="radio" name="smoker" checked={smoker === value} onChange={() => setSmoker(value)} />{t(`smokerOptions.${value}`)}</label>)}</div></fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('whoAreYou')}</legend><div className="choice-grid choice-inline">{SITTER_TYPES.map((value) => <label key={value}><input type="radio" name="sitter_type" checked={sitterType === value} onChange={() => setSitterType(isSitterType(value) ? value : '')} />{t(`partyTypes.${value}`)}</label>)}</div></fieldset>
                       <fieldset className="choice-fieldset"><legend>{t('sitterAvailability')}</legend><div className="choice-grid choice-inline">{(['local', 'travelling', 'both'] as const).map((value) => <label key={value}><input type="radio" name="sitter-availability-profile" checked={sitterAvailability === value} onChange={() => setSitterAvailability(value)} />{t(value === 'local' ? 'localSittersOnly' : value === 'travelling' ? 'travellingSitters' : 'localAndTravelling')}</label>)}</div></fieldset>
@@ -452,7 +482,6 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
                         <label className="form-label">{t('referenceName')}<input className="form-input" required value={referenceName} onChange={(event) => setReferenceName(event.target.value)} /></label>
                         <label className="form-label">{t('referenceContact')}<input className="form-input" required value={referenceContact} onChange={(event) => setReferenceContact(event.target.value)} /></label>
                       </div>
-                      <label className="choice-checkbox"><input type="checkbox" checked={agreeToRules} onChange={(event) => setAgreeToRules(event.target.checked)} />{t('agreeToRules')}</label>
                     </>
                   )}
                   <fieldset className="choice-fieldset"><legend>{t('languagesForListing')}</legend><div className="choice-grid choice-inline">{LANGUAGES.map((value) => <label key={value}><input type="checkbox" checked={languages.includes(value)} onChange={(event) => toggle(languages, setLanguages, value, event.target.checked)} />{value.toUpperCase()}</label>)}</div></fieldset>
@@ -468,6 +497,9 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
                     <h3>{type === 'need_sitter' ? t('generatedListingTitle', { city: capitalizeWords(city), pet: capitalizeWords(petName), type: petTypes.map((item) => t(`petTypes.${item}`)).join(' & '), start: formatDate(startsOn, i18n.language), end: formatDate(endsOn, i18n.language) }) : t('generatedSitterTitle', { city: capitalizeWords(city), start: formatDate(startsOn, i18n.language), end: formatDate(endsOn, i18n.language) })}</h3>
                     <p>{city}, {country} · {formatDate(startsOn, i18n.language)} – {formatDate(endsOn, i18n.language)}</p>
                     <p>{type === 'need_sitter' ? `${petTypes.map((item) => t(`petTypes.${item}`)).join(', ')} · ${petName}, ${petAge} ${t('years')} · ${breed}` : `${canCareFor.map((item) => t(`petTypes.${item}`)).join(', ')} · ${t(`partyTypes.${sitterType}`)} · ${languages.map((language) => language.toUpperCase()).join(' ')}`}</p>
+                    {type === 'need_sitter' && <p>{t('accommodationProvided')}{homeHas.length > 0 ? ` · ${homeHas.map((item) => t(`offerOptions.${item}`)).join(' · ')}` : ''}</p>}
+                    {type === 'need_sitter' && ownerPaymentAmount !== '' && <p>{t('ownerPayment')}: {formatAmount(Number(ownerPaymentAmount), ownerPaymentCurrency)} {t(`feePeriods.${ownerPaymentPeriod}`)}</p>}
+                    {type === 'offer_sitting' && sitterFeeAmount !== '' && <p>{t('sitterFee')}: {formatAmount(Number(sitterFeeAmount), sitterFeeCurrency)} {t(`feePeriods.${sitterFeePeriod}`)}</p>}
                     <p>{description}</p>
                   </article>
                   {stepError && <p className="form-error" role="alert">{stepError}</p>}

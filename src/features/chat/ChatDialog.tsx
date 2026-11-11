@@ -177,9 +177,10 @@ export function ChatDialog({ listing, user, conversationId: existingConversation
           <aside className="private-care-summary">
             <strong>{t('privateCarePlan')}</strong>
             <span>{t('medicalNeeds')}: {privateCareDetails.medical_needs || t('noMedicalNeeds')}</span>
-            <span>{t('vetName')}: {privateCareDetails.vet_name} · {privateCareDetails.vet_phone}</span>
+            {(privateCareDetails.vet_name || privateCareDetails.vet_phone) && (
+              <span>{t('vetDetails')}: {[privateCareDetails.vet_name, privateCareDetails.vet_phone].filter(Boolean).join(' · ')}</span>
+            )}
             <span>{t('emergencyContactName')}: {privateCareDetails.emergency_contact_name} · {privateCareDetails.emergency_contact_phone}</span>
-            <span>{t('whoPaysVet')}: {t(privateCareDetails.who_pays_vet === 'owner' ? 'ownerPays' : 'sharedVetCosts')}</span>
           </aside>
         )}
         <div className="chat-messages" aria-live="polite">
