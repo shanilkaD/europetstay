@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { supabase } from '../../lib/supabase'
 import { capitalizeWords } from '../../lib/text'
 import type { FeePeriod, Listing } from '../../types/database'
+import { MapLocationPicker } from './MapLocationPicker'
 import { PhotoUploadField } from './PhotoUploadField'
 
 const PET_TYPES = ['cat', 'dog', 'bird', 'other']
@@ -64,6 +65,8 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
   const [today] = useState(() => new Date().toISOString().slice(0, 10))
   const [city, setCity] = useState(listing?.city ?? '')
   const [country, setCountry] = useState(listing?.country ?? '')
+  const [latitude, setLatitude] = useState<number | null>(listing?.latitude ?? null)
+  const [longitude, setLongitude] = useState<number | null>(listing?.longitude ?? null)
   const [startsOn, setStartsOn] = useState(listing?.starts_on ?? '')
   const [endsOn, setEndsOn] = useState(listing?.ends_on ?? '')
   const [petTypes, setPetTypes] = useState(listing?.pet_types ?? (listing?.pet_type ? [listing.pet_type] : []))
@@ -247,6 +250,8 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
       title: title.slice(0, 100),
       city: normalizedCity,
       country: capitalizeWords(country),
+      latitude: type === 'need_sitter' ? latitude : null,
+      longitude: type === 'need_sitter' ? longitude : null,
       pet_type: (type === 'need_sitter' ? (petTypes.includes('cat') && petTypes.includes('dog') ? 'both' : petTypes[0]) : 'other') as Listing['pet_type'],
       pet_types: petTypesForListing,
       pet_name: normalizedPetName,
@@ -409,6 +414,20 @@ export function StructuredListingDialog({ userId, initialListingType, listing, o
                     <label className="form-label">{t('city')}<input className="form-input" required maxLength={80} value={city} onChange={(event) => setCity(event.target.value)} /></label>
                     <label className="form-label">{t('country')}<input className="form-input" required maxLength={80} value={country} onChange={(event) => setCountry(event.target.value)} /></label>
                   </div>
+                  {type === 'need_sitter' && (
+                    <fieldset className="choice-fieldset">
+                      <legend>{t('pinHouseLocation')} <span className="optional-field">{t('optional')}</span></legend>
+                      <p className="arrangement-hint">{t('houseLocationPinVisibility')}</p>
+                      <MapLocationPicker
+                        latitude={latitude}
+                        longitude={longitude}
+                        onChange={(coordinates) => {
+                          setLatitude(coordinates?.latitude ?? null)
+                          setLongitude(coordinates?.longitude ?? null)
+                        }}
+                      />
+                    </fieldset>
+                  )}
                   <div className="form-row">
                     <label className="form-label">{t('startDate')}<input className="form-input" type="date" min={today} required value={startsOn} onChange={(event) => setStartsOn(event.target.value)} /></label>
                     <label className="form-label">{t('endDate')}<input className="form-input" type="date" min={startsOn || today} required value={endsOn} onChange={(event) => setEndsOn(event.target.value)} /></label>

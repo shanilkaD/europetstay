@@ -22,6 +22,8 @@ export type Listing = {
   title: string
   city: string
   country: string
+  latitude: number | null
+  longitude: number | null
   pet_type: 'cat' | 'dog' | 'bird' | 'other' | 'both'
   pet_types?: string[]
   pet_name: string | null

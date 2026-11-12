@@ -26,6 +26,10 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
   const feePeriod = listing.listing_type === 'need_sitter' ? listing.owner_payment_period : listing.sitter_fee_period
   const feeLabel = listing.listing_type === 'need_sitter' ? 'ownerPayment' : 'sitterFee'
   const homeOffers = listing.offers.filter((offer) => offer !== 'free_stay').map((offer) => t(`offerOptions.${offer}`)).join(' · ')
+  const hasPinnedLocation = typeof listing.latitude === 'number' && typeof listing.longitude === 'number'
+  const mapUrl = hasPinnedLocation
+    ? `https://www.openstreetmap.org/?mlat=${listing.latitude}&mlon=${listing.longitude}#map=16/${listing.latitude}/${listing.longitude}`
+    : ''
 
   useEffect(() => {
     const dialog = galleryDialogRef.current
@@ -74,6 +78,7 @@ export function ListingCard({ listing, owner, currentUserId, onChat }: ListingCa
       </div>
       <div className="listing-body">
         <p className="listing-location"><span aria-hidden="true">📍</span> {listing.city}, {listing.country}</p>
+        {listing.listing_type === 'need_sitter' && hasPinnedLocation && <a className="listing-map-link" href={mapUrl} target="_blank" rel="noreferrer">{t('viewHouseLocation')}</a>}
         <h3>{listing.title}</h3>
         <p className="listing-pet">
           <span aria-hidden="true">{listing.listing_type === 'offer_sitting' ? '🧳' : '🐾'}</span>{' '}
